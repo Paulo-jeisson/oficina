@@ -1,0 +1,618 @@
+from datetime import date, datetime, time, timedelta
+from decimal import Decimal
+from django.utils import timezone
+from django.conf import settings
+from django.db import models
+from django.urls import reverse
+
+
+class ServiceType(models.TextChoices):
+    OIL_CHANGE = 'oil', 'Troca de óleo'
+    ALIGNMENT = 'alignment', 'Alinhamento'
+    BALANCING = 'balancing', 'Balanceamento'
+    BASIC_REVIEW = 'basic_review', 'Revisão básica'
+    COMPLETE_REVIEW = 'complete_review', 'Revisão completa'
+    ELECTRONIC_DIAGNOSIS = 'electronic_diagnosis', 'Diagnóstico eletrônico'
+    CUSTOM = 'custom', 'Serviço personalizado'
+
+SERVICE_TYPE_DEFAULT_DURATION = {
+    ServiceType.OIL_CHANGE: 30,
+    ServiceType.ALIGNMENT: 60,
+    ServiceType.BALANCING: 60,
+    ServiceType.BASIC_REVIEW: 120,
+    ServiceType.COMPLETE_REVIEW: 240,
+    ServiceType.ELECTRONIC_DIAGNOSIS: 60,
+    ServiceType.CUSTOM: 30,
+}
+
+DURATION_CHOICES = [
+    (30, '30 minutos'),
+    (60, '1 hora'),
+    (90, '1 hora e 30 minutos'),
+    (120, '2 horas'),
+    (150, '2 horas e 30 minutos'),
+    (180, '3 horas'),
+    (210, '3 horas e 30 minutos'),
+    (240, '4 horas'),
+    (270, '4 horas e 30 minutos'),
+    (300, '5 horas'),
+    (330, '5 horas e 30 minutos'),
+    (360, '6 horas'),
+    (390, '6 horas e 30 minutos'),
+    (420, '7 horas'),
+    (450, '7 horas e 30 minutos'),
+    (480, '8 horas'),
+]
+
+PAYMENT_METHOD_CHOICES = [
+    ('cash', 'Dinheiro'),
+    ('card', 'Cartão'),
+    ('transfer', 'Transferência'),
+    ('pix', 'PIX'),
+    ('credit', 'Crédito'),
+    ('debit', 'Débito'),
+    ('other', 'Outro'),
+]
+
+TRANSACTION_TYPE_CHOICES = [
+    ('receivable', 'A receber'),
+    ('payable', 'A pagar'),
+    ('cash_in', 'Entrada'),
+    ('cash_out', 'Saída'),
+]
+
+TRANSACTION_STATUS_CHOICES = [
+    ('pending', 'Pendente'),
+    ('paid', 'Pago'),
+    ('overdue', 'Vencido'),
+]
+
+BUSINESS_START = time(8, 0)
+BUSINESS_END = time(17, 0)
+BUSINESS_MINUTES = 480
+SLOT_STEP = 30
+
+
+class Oficina(models.Model):
+    nome = models.CharField('Nome da oficina', max_length=120)
+    dono = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='oficina'
+    )
+    created_at = models.DateTimeField('Criada em', auto_now_add=True)
+
+    class Meta:
+        ordering = ['nome']
+        verbose_name = 'Oficina'
+        verbose_name_plural = 'Oficinas'
+
+    def __str__(self):
+        return self.nome
+
+
+class OficinaOwnedModel(models.Model):
+    oficina = models.ForeignKey(
+        'agenda.Oficina',
+        on_delete=models.CASCADE,
+        related_name='%(class)ss',
+        verbose_name='Oficina'
+    )
+
+    class Meta:
+        abstract = True
+
+
+def format_duration(minutes: int) -> str:
+    if minutes == 30:
+        return '30 minutos'
+    if minutes < 60:
+        return f'{minutes} minutos'
+    hours = minutes // 60
+    remainder = minutes % 60
+    if remainder:
+        return f'{hours}h {remainder}min'
+    return f'{hours}h'
+
+
+class Booking(OficinaOwnedModel):
+    class Status(models.TextChoices):
+        SCHEDULED = 'scheduled', 'Agendado'
+        IN_PROGRESS = 'in_progress', 'Em andamento'
+        COMPLETED = 'completed', 'Finalizado'
+        CANCELED = 'canceled', 'Cancelado'
+
+    full_name = models.CharField('Nome completo', max_length=120)
+    phone = models.CharField('Telefone', max_length=25)
+    vehicle_brand = models.CharField('Marca do veículo', max_length=80)
+    vehicle_model = models.CharField('Modelo do veículo', max_length=80)
+    vehicle_year = models.PositiveSmallIntegerField('Ano do veículo')
+    problem_description = models.TextField('Problema informado')
+    service_type = models.CharField('Tipo de serviço', max_length=20, choices=ServiceType.choices)
+    duration_minutes = models.PositiveSmallIntegerField('Tempo estimado (minutos)', choices=DURATION_CHOICES)
+    scheduled_date = models.DateField('Data do agendamento')
+    start_time = models.TimeField('Horário de início')
+    status = models.CharField('Status do serviço', max_length=20, choices=Status.choices, default=Status.SCHEDULED)
+    created_at = models.DateTimeField('Criado em', auto_now_add=True)
+    updated_at = models.DateTimeField('Atualizado em', auto_now=True)
+
+    class Meta:
+        ordering = ['scheduled_date', 'start_time', 'full_name']
+        verbose_name = 'Agendamento'
+        verbose_name_plural = 'Agendamentos'
+
+    def __str__(self):
+        return f'{self.full_name} - {self.vehicle_brand} {self.vehicle_model} ({self.scheduled_date} {self.start_time})'
+
+    @property
+    def end_time(self) -> time:
+        start = datetime.combine(self.scheduled_date, self.start_time)
+        end = start + timedelta(minutes=self.duration_minutes)
+        return end.time()
+
+    @property
+    def duration_label(self) -> str:
+        return format_duration(self.duration_minutes)
+
+    @property
+    def time_range_label(self) -> str:
+        return f'{self.start_time.strftime("%H:%M")} - {self.end_time.strftime("%H:%M")}'
+
+    @property
+    def status_label(self) -> str:
+        return self.get_status_display()
+
+    @property
+    def has_os(self) -> bool:
+        return hasattr(self, 'ordem_servico')
+
+    @classmethod
+    def _time_to_minutes(cls, value: time) -> int:
+        return value.hour * 60 + value.minute
+
+    @classmethod
+    def _minutes_to_time(cls, minutes: int) -> time:
+        return (datetime.combine(date.today(), time.min) + timedelta(minutes=minutes)).time()
+
+    @classmethod
+    def _daily_intervals(cls, scheduled_date, oficina=None):
+        bookings = cls.objects.filter(scheduled_date=scheduled_date).exclude(status=cls.Status.CANCELED)
+        if oficina is not None:
+            bookings = bookings.filter(oficina=oficina)
+        return sorted(
+            (
+                cls._time_to_minutes(booking.start_time),
+                cls._time_to_minutes(booking.end_time),
+            )
+            for booking in bookings
+        )
+
+    @classmethod
+    def booked_minutes_for_date(cls, scheduled_date, oficina=None):
+        bookings = cls.objects.filter(
+            scheduled_date=scheduled_date,
+        ).exclude(status=cls.Status.CANCELED)
+        if oficina is not None:
+            bookings = bookings.filter(oficina=oficina)
+        return bookings.aggregate(
+            total=models.Sum('duration_minutes')
+        )['total'] or 0
+
+    @classmethod
+    def available_minutes_for_date(cls, scheduled_date, oficina=None):
+        return max(0, BUSINESS_MINUTES - cls.booked_minutes_for_date(scheduled_date, oficina=oficina))
+
+    @classmethod
+    def overlaps(cls, scheduled_date, start_time, duration_minutes, oficina=None):
+        start = cls._time_to_minutes(start_time)
+        end = start + duration_minutes
+        for current_start, current_end in cls._daily_intervals(scheduled_date, oficina=oficina):
+            if start < current_end and end > current_start:
+                return True
+        return False
+
+    @classmethod
+    def available_start_times_for_date(cls, scheduled_date, duration_minutes, oficina=None):
+        if duration_minutes > BUSINESS_MINUTES:
+            return []
+
+        if cls.available_minutes_for_date(scheduled_date, oficina=oficina) < duration_minutes:
+            return []
+
+        start_min = cls._time_to_minutes(BUSINESS_START)
+        end_min = cls._time_to_minutes(BUSINESS_END) - duration_minutes
+        if end_min < start_min:
+            return []
+
+        result = []
+        for candidate in range(start_min, end_min + 1, SLOT_STEP):
+            candidate_time = cls._minutes_to_time(candidate)
+            if not cls.overlaps(scheduled_date, candidate_time, duration_minutes, oficina=oficina):
+                result.append(candidate_time)
+        return result
+
+    @classmethod
+    def start_time_choices_for_date(cls, scheduled_date, duration_minutes, oficina=None):
+        return [
+            (time_value.strftime('%H:%M'), time_value.strftime('%H:%M'))
+            for time_value in cls.available_start_times_for_date(scheduled_date, duration_minutes, oficina=oficina)
+        ]
+
+    @classmethod
+    def occupied_intervals_for_date(cls, scheduled_date, oficina=None):
+        bookings = cls.objects.filter(scheduled_date=scheduled_date).exclude(status=cls.Status.CANCELED).order_by('start_time')
+        if oficina is not None:
+            bookings = bookings.filter(oficina=oficina)
+        return [
+            {
+                'label': booking.time_range_label,
+                'service': booking.get_service_type_display(),
+                'duration': booking.duration_label,
+                'customer': booking.full_name,
+                'status': booking.status_label,
+            }
+            for booking in bookings
+        ]
+
+    @classmethod
+    def next_available_dates(cls, start_date, required_minutes, limit=5):
+        available = []
+        candidate = start_date
+        while len(available) < limit:
+            if cls.available_minutes_for_date(candidate) >= required_minutes:
+                available.append(candidate)
+            candidate += timedelta(days=1)
+        return available
+
+    def get_absolute_url(self):
+        return reverse('agenda:booking_success')
+
+
+class OrdemServico(OficinaOwnedModel):
+    class Status(models.TextChoices):
+        RECEBIDO = 'received', 'Recebido'
+        ANALYSIS = 'analysis', 'Em análise'
+        WAITING_APPROVAL = 'waiting_approval', 'Aguardando aprovação'
+        IN_PROGRESS = 'in_execution', 'Em execução'
+        COMPLETED = 'completed', 'Finalizado'
+        DELIVERED = 'delivered', 'Entregue'
+        CANCELED = 'canceled', 'Cancelado'
+
+    booking = models.OneToOneField(
+        'agenda.Booking',
+        on_delete=models.CASCADE,
+        related_name='ordem_servico'
+    )
+    order_number = models.CharField('Número da OS', max_length=15, unique=True, editable=False)
+    client_name = models.CharField('Nome do cliente', max_length=120)
+    phone = models.CharField('Telefone', max_length=25)
+    vehicle_brand = models.CharField('Marca do veículo', max_length=80)
+    vehicle_model = models.CharField('Modelo do veículo', max_length=80)
+    vehicle_year = models.PositiveSmallIntegerField('Ano do veículo')
+    plate = models.CharField('Placa', max_length=20, blank=True)
+    mileage = models.PositiveIntegerField('Quilometragem', null=True, blank=True)
+    mechanic_name = models.CharField('Mecânico responsável', max_length=120, blank=True)
+    payment_method = models.CharField('Forma de pagamento', max_length=25, choices=PAYMENT_METHOD_CHOICES, blank=True)
+    warranty = models.CharField('Garantia do serviço', max_length=120, blank=True, default='30 dias')
+    service_value = models.DecimalField('Valor do serviço', max_digits=10, decimal_places=2, default=0)
+    parts_value = models.DecimalField('Valor total de peças', max_digits=10, decimal_places=2, default=0)
+    total_value = models.DecimalField('Valor total', max_digits=10, decimal_places=2, default=0)
+    estimated_profit = models.DecimalField('Lucro estimado', max_digits=10, decimal_places=2, default=0)
+    completed_at = models.DateTimeField('Concluído em', null=True, blank=True)
+    problem_description = models.TextField('Problema relatado')
+    duration_minutes = models.PositiveSmallIntegerField('Tempo estimado (minutos)', choices=DURATION_CHOICES)
+    scheduled_date = models.DateField('Data do agendamento')
+    observations = models.TextField('Observações da oficina', blank=True)
+    status = models.CharField('Status da OS', max_length=20, choices=Status.choices, default=Status.RECEBIDO)
+    created_at = models.DateTimeField('Criado em', auto_now_add=True)
+    updated_at = models.DateTimeField('Atualizado em', auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = 'Ordem de Serviço'
+        verbose_name_plural = 'Ordens de Serviço'
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._original_status = self.status
+
+    def __str__(self):
+        return self.order_number
+
+    def save(self, *args, **kwargs):
+        user = kwargs.pop('user', None)
+        note = kwargs.pop('note', '')
+        new = self.pk is None
+        if not self.order_number:
+            self.order_number = self.generate_order_number()
+        self.total_value = self.service_value + self.parts_value
+        # removed estimated_profit calculation
+        if self.status == self.Status.COMPLETED and self.completed_at is None:
+            self.completed_at = timezone.now()
+        super().save(*args, **kwargs)
+
+        if new:
+            OrdemServicoStatusHistory.objects.create(
+                ordem_servico=self,
+                status=self.status,
+                user=user,
+                note='OS criada' if not note else note,
+            )
+        elif self._original_status != self.status:
+            OrdemServicoStatusHistory.objects.create(
+                ordem_servico=self,
+                status=self.status,
+                user=user,
+                note=note,
+            )
+
+        self._original_status = self.status
+
+        if self.status == self.Status.COMPLETED:
+            self.register_financial_completion(user=user)
+
+    def generate_order_number(self):
+        last_os = OrdemServico.objects.order_by('-id').first()
+        next_number = 1
+        if last_os and last_os.order_number.startswith('OS-'):
+            try:
+                next_number = int(last_os.order_number.replace('OS-', '')) + 1
+            except ValueError:
+                next_number = last_os.id + 1
+        return f'OS-{next_number:06d}'
+
+    def register_financial_completion(self, user=None):
+        if self.status != self.Status.COMPLETED:
+            return
+        if FinancialTransaction.objects.filter(ordem_servico=self, transaction_type='receivable').exists():
+            return
+
+        FinancialTransaction.objects.create(
+            oficina=self.oficina,
+            ordem_servico=self,
+            transaction_type='receivable',
+            status='paid',
+            amount=self.total_value,
+            due_date=self.completed_at.date() if self.completed_at else date.today(),
+            paid_at=self.completed_at or timezone.now(),
+            payment_method=self.payment_method,
+            description=f'Faturamento da OS {self.order_number}',
+        )
+
+        CashFlowRecord.objects.create(
+            oficina=self.oficina,
+            ordem_servico=self,
+            entry_type='inflow',
+            amount=self.total_value,
+            entry_date=self.completed_at.date() if self.completed_at else date.today(),
+            description=f'Receita registrada para OS {self.order_number}',
+        )
+
+        FinanceAudit.objects.create(
+            oficina=self.oficina,
+            ordem_servico=self,
+            action='OS concluída e faturamento registrado',
+            user=user,
+            note=f'Valor total R$ {self.total_value:.2f}',
+        )
+
+    @property
+    def status_label(self):
+        return self.get_status_display()
+
+    @property
+    def vehicle_description(self):
+        return f'{self.vehicle_brand} {self.vehicle_model} ({self.vehicle_year})'
+
+    @property
+    def duration_label(self):
+        return format_duration(self.duration_minutes)
+
+
+class OrdemServicoServiceItem(OficinaOwnedModel):
+    ordem_servico = models.ForeignKey(
+        'agenda.OrdemServico',
+        related_name='service_items',
+        on_delete=models.CASCADE
+    )
+    description = models.CharField('Serviço', max_length=180)
+    quantity = models.PositiveSmallIntegerField('Quantidade', default=1)
+    unit_price = models.DecimalField('Valor unitário', max_digits=10, decimal_places=2, default=0)
+
+    class Meta:
+        verbose_name = 'Serviço executado'
+        verbose_name_plural = 'Serviços executados'
+
+    def __str__(self):
+        return f'{self.description} ({self.quantity})'
+
+    def save(self, *args, **kwargs):
+        if not self.oficina_id and self.ordem_servico_id:
+            self.oficina = self.ordem_servico.oficina
+        super().save(*args, **kwargs)
+
+    @property
+    def total_price(self):
+        return self.quantity * self.unit_price
+
+
+class OrdemServicoPartItem(OficinaOwnedModel):
+    ordem_servico = models.ForeignKey(
+        'agenda.OrdemServico',
+        related_name='part_items',
+        on_delete=models.CASCADE
+    )
+    description = models.CharField('Peça', max_length=180)
+    quantity = models.PositiveSmallIntegerField('Quantidade', default=1)
+    unit_price = models.DecimalField('Valor unitário', max_digits=10, decimal_places=2, default=0)
+
+    class Meta:
+        verbose_name = 'Peça utilizada'
+        verbose_name_plural = 'Peças utilizadas'
+
+    def __str__(self):
+        return f'{self.description} ({self.quantity})'
+
+    def save(self, *args, **kwargs):
+        if not self.oficina_id and self.ordem_servico_id:
+            self.oficina = self.ordem_servico.oficina
+        super().save(*args, **kwargs)
+
+    @property
+    def total_price(self):
+        return self.quantity * self.unit_price
+
+
+class FinancialTransaction(OficinaOwnedModel):
+    ordem_servico = models.ForeignKey(
+        'agenda.OrdemServico',
+        related_name='transactions',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL
+    )
+    transaction_type = models.CharField('Tipo', max_length=20, choices=TRANSACTION_TYPE_CHOICES)
+    status = models.CharField('Status', max_length=20, choices=TRANSACTION_STATUS_CHOICES, default='pending')
+    amount = models.DecimalField('Valor', max_digits=10, decimal_places=2)
+    due_date = models.DateField('Vencimento')
+    paid_at = models.DateTimeField('Pago em', null=True, blank=True)
+    payment_method = models.CharField('Forma de pagamento', max_length=25, choices=PAYMENT_METHOD_CHOICES, blank=True)
+    description = models.TextField('Descrição', blank=True)
+    created_at = models.DateTimeField('Criado em', auto_now_add=True)
+
+    class Meta:
+        ordering = ['-due_date', '-created_at']
+        verbose_name = 'Movimentação financeira'
+        verbose_name_plural = 'Movimentações financeiras'
+
+    def __str__(self):
+        return f'{self.get_transaction_type_display()} - R$ {self.amount:.2f}'
+
+
+    def save(self, *args, **kwargs):
+        if not self.oficina_id and self.ordem_servico_id:
+            self.oficina = self.ordem_servico.oficina
+        super().save(*args, **kwargs)
+
+
+class CashFlowRecord(OficinaOwnedModel):
+    ENTRY_CHOICES = [
+        ('inflow', 'Entrada'),
+        ('outflow', 'Saída'),
+    ]
+    ordem_servico = models.ForeignKey(
+        'agenda.OrdemServico',
+        related_name='cash_records',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL
+    )
+    entry_date = models.DateField('Data')
+    entry_type = models.CharField('Tipo', max_length=20, choices=ENTRY_CHOICES)
+    amount = models.DecimalField('Valor', max_digits=10, decimal_places=2)
+    description = models.TextField('Descrição', blank=True)
+
+    class Meta:
+        ordering = ['-entry_date']
+        verbose_name = 'Registro de fluxo de caixa'
+        verbose_name_plural = 'Registros de fluxo de caixa'
+
+    def __str__(self):
+        return f'{self.get_entry_type_display()} - R$ {self.amount:.2f} em {self.entry_date}'
+
+
+    def save(self, *args, **kwargs):
+        if not self.oficina_id and self.ordem_servico_id:
+            self.oficina = self.ordem_servico.oficina
+        super().save(*args, **kwargs)
+
+
+class FinanceAudit(OficinaOwnedModel):
+    ordem_servico = models.ForeignKey(
+        'agenda.OrdemServico',
+        related_name='finance_audit',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL
+    )
+    action = models.CharField('Ação', max_length=180)
+    note = models.TextField('Nota', blank=True)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL
+    )
+    created_at = models.DateTimeField('Registrado em', auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = 'Auditoria financeira'
+        verbose_name_plural = 'Auditorias financeiras'
+
+    def __str__(self):
+        return f'{self.action} - {self.created_at:%d/%m/%Y %H:%M}'
+
+
+    def save(self, *args, **kwargs):
+        if not self.oficina_id and self.ordem_servico_id:
+            self.oficina = self.ordem_servico.oficina
+        super().save(*args, **kwargs)
+
+
+class OrdemServicoStatusHistory(OficinaOwnedModel):
+    ordem_servico = models.ForeignKey(
+        OrdemServico,
+        related_name='history',
+        on_delete=models.CASCADE
+    )
+    status = models.CharField('Status', max_length=20, choices=OrdemServico.Status.choices)
+    note = models.TextField('Observação', blank=True)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL
+    )
+    created_at = models.DateTimeField('Registrado em', auto_now_add=True)
+
+    class Meta:
+        ordering = ['created_at']
+        verbose_name = 'Histórico de OS'
+        verbose_name_plural = 'Histórico de OS'
+
+    def __str__(self):
+        return f'{self.ordem_servico.order_number} - {self.get_status_display()}'
+
+    def save(self, *args, **kwargs):
+        if not self.oficina_id and self.ordem_servico_id:
+            self.oficina = self.ordem_servico.oficina
+        super().save(*args, **kwargs)
+
+    @property
+    def author_name(self):
+        return self.user.get_full_name() if self.user else 'Sistema'
+
+
+class EstoqueItem(OficinaOwnedModel):
+    nome = models.CharField('Nome do item', max_length=180)
+    codigo = models.CharField('Codigo', max_length=60, blank=True)
+    quantidade = models.PositiveIntegerField('Quantidade', default=0)
+    custo_unitario = models.DecimalField('Custo unitario', max_digits=10, decimal_places=2, default=0)
+    created_at = models.DateTimeField('Criado em', auto_now_add=True)
+    updated_at = models.DateTimeField('Atualizado em', auto_now=True)
+
+    class Meta:
+        ordering = ['nome']
+        verbose_name = 'Item de estoque'
+        verbose_name_plural = 'Itens de estoque'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['oficina', 'codigo'],
+                condition=models.Q(codigo__gt=''),
+                name='unique_codigo_estoque_por_oficina',
+            )
+        ]
+
+    def __str__(self):
+        return self.nome

@@ -1,0 +1,80 @@
+{% extends 'agenda/base.html' %}
+{% block content %}
+<section class="os-detail-panel">
+    <div class="dashboard-head">
+        <div>
+            <p class="eyebrow">Ordem de Serviço</p>
+            <h1>{{ ordem.order_number }}</h1>
+            <p>Status atual: <strong>{{ ordem.status_label }}</strong></p>
+        </div>
+        <div class="panel-actions">
+            <a class="btn btn-secondary" href="{% url 'agenda:os_print' ordem.pk %}">Imprimir / Gerar PDF</a>
+            <a class="btn btn-primary" href="{% url 'agenda:os_list' %}">Voltar à lista</a>
+        </div>
+    </div>
+
+    <div class="os-summary-grid">
+        <article class="os-card">
+            <h3>Dados do cliente</h3>
+            <p><strong>Nome:</strong> {{ ordem.client_name }}</p>
+            <p><strong>Telefone:</strong> {{ ordem.phone }}</p>
+        </article>
+        <article class="os-card">
+            <h3>Dados do veículo</h3>
+            <p><strong>Marca:</strong> {{ ordem.vehicle_brand }}</p>
+            <p><strong>Modelo:</strong> {{ ordem.vehicle_model }}</p>
+            <p><strong>Ano:</strong> {{ ordem.vehicle_year }}</p>
+            <p><strong>Placa:</strong> {{ ordem.plate|default:'Não informada' }}</p>
+        </article>
+        <article class="os-card">
+            <h3>Serviço</h3>
+            <p><strong>Problema informado:</strong> {{ ordem.problem_description }}</p>
+            <p><strong>Data do agendamento:</strong> {{ ordem.scheduled_date|date:'d/m/Y' }}</p>
+            <p><strong>Tempo estimado:</strong> {{ ordem.duration_label }}</p>
+            <p><strong>Observações:</strong> {{ ordem.observations|default:'Nenhuma observação registrada.' }}</p>
+        </article>
+    </div>
+
+    <section class="os-actions-panel">
+        <div class="panel-card">
+            <h2>Atualizar status</h2>
+            <form method="post" action="{% url 'agenda:update_os_status' ordem.pk %}">
+                {% csrf_token %}
+                <div class="field-group">
+                    <label for="id_status">Novo status</label>
+                    {{ status_form.status }}
+                </div>
+                <div class="field-group">
+                    <label for="id_note">Observações</label>
+                    {{ status_form.note }}
+                </div>
+                <button type="submit" class="btn btn-primary">Salvar status</button>
+            </form>
+        </div>
+    </section>
+
+    <section class="timeline-panel">
+        <h2>Histórico de status</h2>
+        <ul class="timeline-list">
+            {% for item in history %}
+            <li>
+                <strong>{{ item.created_at|date:'d/m/Y H:i' }}</strong>
+                <p>{{ item.get_status_display }} por {{ item.author_name }}</p>
+                {% if item.note %}
+                <small>{{ item.note }}</small>
+                {% endif %}
+            </li>
+            {% empty %}
+            <li>Nenhuma atualização registrada.</li>
+            {% endfor %}
+        </ul>
+    </section>
+
+    <section class="info-panel">
+        <div class="panel-card">
+            <p><strong>Criado em:</strong> {{ ordem.created_at|date:'d/m/Y H:i' }}</p>
+            <p><strong>Última atualização:</strong> {{ ordem.updated_at|date:'d/m/Y H:i' }}</p>
+        </div>
+    </section>
+</section>
+{% endblock %}

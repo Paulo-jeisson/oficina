@@ -1,0 +1,242 @@
+{% extends 'agenda/base.html' %}
+{% block content %}
+<section class="dashboard-overview">
+    <div class="dashboard-head">
+        <div>
+            <p class="eyebrow">Dashboard Financeiro</p>
+            <h1>Visão geral financeira</h1>
+            <p>Resumo de faturamento, fluxo de caixa e relatórios em tempo real.</p>
+        </div>
+    </div>
+
+    <section class="filters-panel">
+        <form class="filters-form" method="get">
+            <div class="filter-field">
+                <label for="id_start_date">Data inicial</label>
+                <input id="id_start_date" type="date" name="start_date" value="{{ start_date }}" />
+            </div>
+            <div class="filter-field">
+                <label for="id_end_date">Data final</label>
+                <input id="id_end_date" type="date" name="end_date" value="{{ end_date }}" />
+            </div>
+            <div class="filter-field">
+                <label for="id_client">Cliente</label>
+                <input id="id_client" name="client" value="{{ client }}" placeholder="Nome do cliente" />
+            </div>
+            <div class="filter-field">
+                <label for="id_vehicle">Veículo</label>
+                <input id="id_vehicle" name="vehicle" value="{{ vehicle }}" placeholder="Marca, modelo ou placa" />
+            </div>
+            <div class="filter-field">
+                <label for="id_mechanic">Mecânico</label>
+                <input id="id_mechanic" name="mechanic" value="{{ mechanic }}" placeholder="Nome do mecânico" />
+            </div>
+            <div class="filter-field">
+                <label for="id_status">Status da OS</label>
+                <select id="id_status" name="status">
+                    <option value="">Todos</option>
+                    {% for value, label in status_choices %}
+                        <option value="{{ value }}" {% if status_filter == value %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <button class="btn btn-primary" type="submit">Aplicar filtros</button>
+            <a class="btn btn-secondary" href="{% url 'agenda:finance_dashboard' %}">Limpar</a>
+        </form>
+    </section>
+
+    <div class="summary-grid">
+        <article class="summary-card">
+            <h3>Faturamento do dia</h3>
+            <p>R$ {{ revenue_day|floatformat:2 }}</p>
+        </article>
+        <article class="summary-card">
+            <h3>Faturamento da semana</h3>
+            <p>R$ {{ revenue_week|floatformat:2 }}</p>
+        </article>
+        <article class="summary-card">
+            <h3>Faturamento do mês</h3>
+            <p>R$ {{ revenue_month|floatformat:2 }}</p>
+        </article>
+        <article class="summary-card">
+            <h3>Faturamento do ano</h3>
+            <p>R$ {{ revenue_year|floatformat:2 }}</p>
+        </article>
+        <article class="summary-card">
+            <h3>Ordens concluídas</h3>
+            <p>{{ total_completed_os }}</p>
+        </article>
+        <article class="summary-card">
+            <h3>Ticket médio</h3>
+            <p>R$ {{ ticket_mean|floatformat:2 }}</p>
+        </article>
+        <article class="summary-card">
+            <h3>Clientes atendidos</h3>
+            <p>{{ unique_clients }}</p>
+        </article>
+        <article class="summary-card">
+            <h3>Veículos atendidos</h3>
+            <p>{{ unique_vehicles }}</p>
+        </article>
+    </div>
+
+    <section class="table-panel">
+        <div class="table-card">
+            <div class="table-header-actions">
+                <h2>Relatórios financeiros</h2>
+                <div class="table-header-buttons">
+                    <a class="btn btn-secondary" href="{% url 'agenda:finance_export_excel' %}?start_date={{ start_date }}&end_date={{ end_date }}&client={{ client }}&vehicle={{ vehicle }}&mechanic={{ mechanic }}&status={{ status_filter }}">Exportar Excel</a>
+                </div>
+            </div>
+            <div class="overflow-table">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>OS</th>
+                            <th>Cliente</th>
+                            <th>Veículo</th>
+                            <th>Concluído</th>
+                            <th>Total</th>
+                            <th>Status</th>
+                            <th>Pagamento</th>
+                            <th>Ação</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for ordem in receivables %}
+                        <tr>
+                            <td>{{ ordem.ordem_servico.order_number }}</td>
+                            <td>{{ ordem.ordem_servico.client_name }}</td>
+                            <td>{{ ordem.ordem_servico.vehicle_brand }} / {{ ordem.ordem_servico.vehicle_model }}</td>
+                            <td>{{ ordem.ordem_servico.completed_at|date:'d/m/Y' }}</td>
+                            <td>R$ {{ ordem.amount|floatformat:2 }}</td>
+                            <td>{{ ordem.ordem_servico.status_label }}</td>
+                            <td>{{ ordem.get_payment_method_display }}</td>
+                            <td>
+                                <a class="btn btn-tertiary" href="{% url 'agenda:finance_invoice' ordem.ordem_servico.pk %}">Cupom</a>
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="8">Nenhum lançamento encontrado.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+
+    <div class="dashboard-head">
+        <div>
+            <h2>Indicadores inteligentes</h2>
+        </div>
+        <div class="panel-actions">
+            <span class="btn btn-secondary">Alertas pendentes: {{ pending_alerts }}</span>
+        </div>
+    </div>
+
+    <section class="summary-grid">
+        <article class="summary-card">
+            <h3>Receita total</h3>
+            <p>R$ {{ revenue_total|floatformat:2 }}</p>
+        </article>
+        <article class="summary-card">
+            <h3>Serviços realizados</h3>
+            <p>{{ services_done }}</p>
+        </article>
+        <article class="summary-card">
+            <h3>Valor peças</h3>
+            <p>R$ {{ parts_total|floatformat:2 }}</p>
+        </article>
+        <!-- lucro estimado removido -->
+    </div>
+
+    <section class="calendar-panel">
+        <h2>Serviços mais realizados</h2>
+        <ul class="schedule-list">
+            {% for item in top_services %}
+            <li>{{ item.description }} - {{ item.total }} vezes</li>
+            {% endfor %}
+        </ul>
+    </section>
+
+    <section class="calendar-panel">
+        <h2>Peças mais vendidas</h2>
+        <ul class="schedule-list">
+            {% for item in top_parts %}
+            <li>{{ item.description }} - {{ item.total }} unidades</li>
+            {% endfor %}
+        </ul>
+    </section>
+    <section class="chart-panel">
+        <div class="chart-card">
+            <h2>Faturamento por dia</h2>
+            <canvas id="dailyChart"></canvas>
+        </div>
+        <div class="chart-card">
+            <h2>Faturamento por mês</h2>
+            <canvas id="monthlyChart"></canvas>
+        </div>
+        <div class="chart-card">
+            <h2>Serviços x Peças</h2>
+            <canvas id="servicePartsChart"></canvas>
+        </div>
+    </section>
+    {{ daily_series|json_script:'daily-data' }}
+    {{ monthly_series|json_script:'monthly-data' }}
+    {{ service_vs_parts|json_script:'service-parts-data' }}
+</section>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+    const dailySeries = JSON.parse(document.getElementById('daily-data').textContent || '[]');
+    const monthlySeries = JSON.parse(document.getElementById('monthly-data').textContent || '[]');
+    const servicePartsData = JSON.parse(document.getElementById('service-parts-data').textContent || '[]');
+
+    function createChart(id, type, labels, data, label) {
+        const ctx = document.getElementById(id).getContext('2d');
+        new Chart(ctx, {
+            type,
+            data: {
+                labels,
+                datasets: [{
+                    label,
+                    data,
+                    backgroundColor: ['#1f4f8b', '#f5a623', '#4f79c2', '#86c3f7', '#f47b50'],
+                    borderColor: '#1f4f8b',
+                    borderWidth: 1,
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'top',
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return `R$ ${context.parsed.y?.toFixed(2) || context.parsed}`;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    if (dailySeries.length) {
+        createChart('dailyChart', 'line', dailySeries.map(item => item.date), dailySeries.map(item => item.amount), 'Faturamento diário');
+    }
+    if (monthlySeries.length) {
+        createChart('monthlyChart', 'bar', monthlySeries.map(item => item.month), monthlySeries.map(item => item.amount), 'Faturamento mensal');
+    }
+    if (servicePartsData.length) {
+        createChart('servicePartsChart', 'doughnut', servicePartsData.map(item => item.label), servicePartsData.map(item => item.value), 'Receita serviços vs peças');
+    }
+</script>
+{% endblock %}

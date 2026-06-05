@@ -1,0 +1,39 @@
+{% extends 'agenda/base.html' %}
+{% block content %}
+<section class="hero-section">
+    <div class="hero-copy">
+        <p class="eyebrow">Sua oficina em boas mãos</p>
+        <h1>Reserve o serviço da sua oficina em minutos</h1>
+        <p>Preencha o formulário abaixo, escolha a data desejada e receba a confirmação rápida de disponibilidade.</p>
+    </div>
+    <div class="hero-card">
+        <h2>Selecione o tipo de serviço</h2>
+        <ul class="service-list">
+            {% for label, value in service_durations.items %}
+            <li><strong>{{ label }}</strong> <span>{{ value }}</span></li>
+            {% endfor %}
+        </ul>
+    </div>
+</section>
+
+<section class="form-section">
+    <div class="form-wrapper">
+        <h2>Agende seu serviço</h2>
+        <form method="post" novalidate>
+            {% csrf_token %}
+            {% for field in form.visible_fields %}
+                <div class="field-group{% if field.errors %} field-error{% endif %}">
+                    <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+                    {{ field }}
+                    {% if field.help_text %}<small>{{ field.help_text }}</small>{% endif %}
+                    {% for error in field.errors %}
+                        <span class="field-error-message">{{ error }}</span>
+                    {% endfor %}
+                </div>
+            {% endfor %}
+            <div class="slot-info" id="slotMessage">Selecione data e duração para ver os horários disponíveis.</div>
+            <button class="btn btn-primary" type="submit">Enviar agendamento</button>
+        </form>
+    </div>
+</section>
+{% endblock %}

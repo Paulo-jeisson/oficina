@@ -1,0 +1,99 @@
+{% extends 'agenda/base.html' %}
+{% block content %}
+<section class="dashboard-overview">
+    <div class="dashboard-head">
+        <div>
+            <p class="eyebrow">Gestão de Ordens de Serviço</p>
+            <h1>Ordens abertas e em andamento</h1>
+            <p>Visualize, pesquise e gerencie todas as OS vinculadas aos agendamentos.</p>
+        </div>
+    </div>
+
+    <div class="summary-grid">
+        <article class="summary-card">
+            <h3>Abertas</h3>
+            <p>{{ status_summary.received|default:0 }}</p>
+        </article>
+        <article class="summary-card">
+            <h3>Em análise</h3>
+            <p>{{ status_summary.analysis|default:0 }}</p>
+        </article>
+        <article class="summary-card">
+            <h3>Em execução</h3>
+            <p>{{ status_summary.in_execution|default:0 }}</p>
+        </article>
+        <article class="summary-card">
+            <h3>Finalizadas</h3>
+            <p>{{ status_summary.completed|default:0 }}</p>
+        </article>
+        <article class="summary-card">
+            <h3>Entregues</h3>
+            <p>{{ status_summary.delivered|default:0 }}</p>
+        </article>
+    </div>
+
+    <section class="filters-panel">
+        <form class="filters-form" method="get">
+            <div class="filter-field">
+                <label for="id_q">Pesquisar</label>
+                <input id="id_q" name="q" value="{{ query }}" placeholder="Número, cliente ou veículo" />
+            </div>
+            <div class="filter-field">
+                <label for="id_date">Data</label>
+                <input id="id_date" type="date" name="date" value="{{ date_filter }}" />
+            </div>
+            <div class="filter-field">
+                <label for="id_status">Status</label>
+                <select id="id_status" name="status">
+                    <option value="">Todos</option>
+                    {% for value, label in status_choices %}
+                    <option value="{{ value }}" {% if status_filter == value %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <button class="btn btn-primary" type="submit">Filtrar</button>
+            <a class="btn btn-secondary" href="{% url 'agenda:os_list' %}">Limpar</a>
+        </form>
+    </section>
+
+    <section class="table-panel">
+        <div class="table-card">
+            <h2>Ordens de Serviço</h2>
+            <div class="overflow-table">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>OS</th>
+                            <th>Cliente</th>
+                            <th>Veículo</th>
+                            <th>Data</th>
+                            <th>Tempo</th>
+                            <th>Status</th>
+                            <th>Ação</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for ordem in orders %}
+                        <tr>
+                            <td>{{ ordem.order_number }}</td>
+                            <td>{{ ordem.client_name }}</td>
+                            <td>{{ ordem.vehicle_brand }} / {{ ordem.vehicle_model }}</td>
+                            <td>{{ ordem.scheduled_date|date:'d/m/Y' }}</td>
+                            <td>{{ ordem.duration_label }}</td>
+                            <td>{{ ordem.status_label }}</td>
+                            <td>
+                                <a class="btn btn-tertiary" href="{% url 'agenda:os_detail' ordem.pk %}">Ver OS</a>
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="7">Nenhuma ordem de serviço encontrada.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+</section>
+{% endblock %}

@@ -1,0 +1,11 @@
+{% extends 'agenda/base.html' %}
+{% block content %}
+<section class="section-panel success-panel">
+    <div class="panel-card">
+        <h1>Agendamento enviado!</h1>
+        <p>Seu pedido foi recebido com sucesso. A oficina analisará a disponibilidade e entrará em contato em breve.</p>
+        <a class="btn btn-secondary" href="{% url 'agenda:booking' %}">Fazer novo agendamento</a>
+        <a class="btn btn-tertiary" href="{% url 'agenda:dashboard' %}">Ver painel da oficina</a>
+    </div>
+</section>
+{% endblock %}

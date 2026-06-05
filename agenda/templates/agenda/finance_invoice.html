@@ -1,0 +1,107 @@
+{% extends 'agenda/base.html' %}
+{% block content %}
+<section class="invoice-panel">
+    <div class="dashboard-head">
+        <div>
+            <p class="eyebrow">Cupom de Serviço</p>
+            <h1>{{ ordem.order_number }}</h1>
+        </div>
+        <div class="panel-actions">
+            <a class="btn btn-primary" href="javascript:window.print()">Imprimir cupom</a>
+            <a class="btn btn-secondary" href="{% url 'agenda:finance_export_pdf' ordem.pk %}">Baixar PDF</a>
+        </div>
+    </div>
+
+    <div class="table-card">
+        <div class="invoice-header">
+            <div>
+                <h2>Oficina PRO</h2>
+                <p>Endereço: Rua Exemplo, 123 - Cidade</p>
+                <p>Telefone: (11) 99999-9999</p>
+                <p>WhatsApp: (11) 98888-8888</p>
+            </div>
+            <div>
+                <p><strong>Data/Hora:</strong> {{ ordem.completed_at|date:'d/m/Y H:i' }}</p>
+                <p><strong>Cliente:</strong> {{ ordem.client_name }}</p>
+                <p><strong>Veículo:</strong> {{ ordem.vehicle_brand }} {{ ordem.vehicle_model }}</p>
+                <p><strong>Placa:</strong> {{ ordem.plate|default:'-' }}</p>
+                <p><strong>Quilometragem:</strong> {{ ordem.mileage|default:'-' }}</p>
+            </div>
+        </div>
+
+        <div class="invoice-section">
+            <h3>Serviços executados</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Serviço</th>
+                        <th>Qtd</th>
+                        <th>Unitário</th>
+                        <th>Total</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in ordem.service_items.all %}
+                    <tr>
+                        <td>{{ item.description }}</td>
+                        <td>{{ item.quantity }}</td>
+                        <td>R$ {{ item.unit_price|floatformat:2 }}</td>
+                        <td>R$ {{ item.total_price|floatformat:2 }}</td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="4">Nenhum serviço registrado.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="invoice-section">
+            <h3>Peças utilizadas</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Peça</th>
+                        <th>Qtd</th>
+                        <th>Unitário</th>
+                        <th>Total</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in ordem.part_items.all %}
+                    <tr>
+                        <td>{{ item.description }}</td>
+                        <td>{{ item.quantity }}</td>
+                        <td>R$ {{ item.unit_price|floatformat:2 }}</td>
+                        <td>R$ {{ item.total_price|floatformat:2 }}</td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="4">Nenhuma peça utilizada.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="invoice-summary">
+            <div>
+                <p><strong>Forma de pagamento:</strong> {{ ordem.get_payment_method_display|default:'-' }}</p>
+                <p><strong>Mecânico responsável:</strong> {{ ordem.mechanic_name|default:'-' }}</p>
+                <p><strong>Garantia:</strong> {{ ordem.warranty }}</p>
+            </div>
+            <div>
+                <p><strong>Serviços:</strong> R$ {{ ordem.service_value|floatformat:2 }}</p>
+                <p><strong>Peças:</strong> R$ {{ ordem.parts_value|floatformat:2 }}</p>
+                <p><strong>Total:</strong> R$ {{ ordem.total_value|floatformat:2 }}</p>
+            </div>
+        </div>
+
+        <div class="invoice-notes">
+            <h3>Observações</h3>
+            <p>{{ ordem.observations|default:'Nenhuma observação.' }}</p>
+        </div>
+    </div>
+</section>
+{% endblock %}

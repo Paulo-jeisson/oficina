@@ -1,0 +1,102 @@
+from django.contrib import admin
+from .models import (
+    Booking,
+    Oficina,
+    OrdemServico,
+    OrdemServicoStatusHistory,
+    OrdemServicoServiceItem,
+    OrdemServicoPartItem,
+    FinancialTransaction,
+    CashFlowRecord,
+    FinanceAudit,
+    EstoqueItem,
+)
+
+
+@admin.register(Oficina)
+class OficinaAdmin(admin.ModelAdmin):
+    list_display = ('nome', 'dono', 'created_at')
+    search_fields = ('nome', 'dono__username', 'dono__email')
+    readonly_fields = ('created_at',)
+
+
+@admin.register(Booking)
+class BookingAdmin(admin.ModelAdmin):
+    list_display = (
+        'oficina',
+        'full_name',
+        'phone',
+        'vehicle_brand',
+        'vehicle_model',
+        'vehicle_year',
+        'scheduled_date',
+        'start_time',
+        'duration_minutes',
+        'status',
+    )
+    list_filter = ('oficina', 'status', 'scheduled_date', 'service_type')
+    search_fields = ('full_name', 'phone', 'vehicle_brand', 'vehicle_model')
+    readonly_fields = ('created_at', 'updated_at')
+
+
+class OrdemServicoStatusInline(admin.TabularInline):
+    model = OrdemServicoStatusHistory
+    extra = 0
+    readonly_fields = ('status', 'note', 'user', 'created_at')
+    can_delete = False
+
+
+class OrdemServicoServiceItemInline(admin.TabularInline):
+    model = OrdemServicoServiceItem
+    extra = 0
+
+
+class OrdemServicoPartItemInline(admin.TabularInline):
+    model = OrdemServicoPartItem
+    extra = 0
+
+
+@admin.register(OrdemServico)
+class OrdemServicoAdmin(admin.ModelAdmin):
+    list_display = (
+        'oficina',
+        'order_number',
+        'client_name',
+        'vehicle_brand',
+        'vehicle_model',
+        'scheduled_date',
+        'duration_minutes',
+        'status',
+    )
+    list_filter = ('oficina', 'status', 'scheduled_date')
+    search_fields = ('order_number', 'client_name', 'vehicle_brand', 'vehicle_model')
+    readonly_fields = ('order_number', 'created_at', 'updated_at')
+    inlines = [OrdemServicoStatusInline, OrdemServicoServiceItemInline, OrdemServicoPartItemInline]
+
+
+@admin.register(FinancialTransaction)
+class FinancialTransactionAdmin(admin.ModelAdmin):
+    list_display = ('oficina', 'ordem_servico', 'transaction_type', 'status', 'amount', 'due_date', 'payment_method')
+    list_filter = ('oficina', 'transaction_type', 'status', 'payment_method')
+    search_fields = ('ordem_servico__order_number', 'description')
+
+
+@admin.register(CashFlowRecord)
+class CashFlowRecordAdmin(admin.ModelAdmin):
+    list_display = ('oficina', 'entry_date', 'entry_type', 'amount', 'ordem_servico')
+    list_filter = ('oficina', 'entry_type')
+    search_fields = ('description', 'ordem_servico__order_number')
+
+
+@admin.register(FinanceAudit)
+class FinanceAuditAdmin(admin.ModelAdmin):
+    list_display = ('oficina', 'action', 'ordem_servico', 'user', 'created_at')
+    list_filter = ('oficina', 'user')
+    search_fields = ('action', 'note')
+
+
+@admin.register(EstoqueItem)
+class EstoqueItemAdmin(admin.ModelAdmin):
+    list_display = ('oficina', 'nome', 'codigo', 'quantidade', 'custo_unitario')
+    list_filter = ('oficina',)
+    search_fields = ('nome', 'codigo')

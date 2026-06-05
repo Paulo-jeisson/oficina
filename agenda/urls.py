@@ -1,0 +1,56 @@
+from django.contrib.auth.views import LoginView
+from django.urls import path, reverse_lazy
+from django.views.generic import RedirectView
+from .views import (
+    BookingCreateView,
+    BookingSuccessView,
+    DashboardView,
+    BookingStatusUpdateView,
+    DeleteBookingView,
+    AvailableSlotsView,
+    OrdemServicoListView,
+    OrdemServicoDetailView,
+    OrdemServicoServiceItemCreateView,
+    OrdemServicoServiceItemDeleteView,
+    OrdemServicoPartItemCreateView,
+    OrdemServicoPartItemDeleteView,
+    OrdemServicoFinancialUpdateView,
+    OrdemServicoCreateFromBookingView,
+    OrdemServicoStatusUpdateView,
+    OrdemServicoPrintView,
+    ExportBookingsExcelView,
+    FinanceDashboardView,
+    FinanceExportExcelView,
+    FinanceExportPdfView,
+    FinanceInvoiceView,
+    logout_view,
+)
+
+app_name = 'agenda'
+
+urlpatterns = [
+    path('', RedirectView.as_view(pattern_name='agenda:booking', permanent=False), name='home'),
+    path('agendar/', BookingCreateView.as_view(), name='booking'),
+    path('agendar/success/', BookingSuccessView.as_view(), name='booking_success'),
+    path('agendar/available-slots/', AvailableSlotsView.as_view(), name='available_slots'),
+    path('login/', LoginView.as_view(template_name='registration/login.html', redirect_authenticated_user=True), name='login'),
+    path('logout/', logout_view, name='logout'),
+    path('dashboard/', DashboardView.as_view(), name='dashboard'),
+    path('dashboard/export-excel/', ExportBookingsExcelView.as_view(), name='export_bookings_excel'),
+    path('financeiro/', FinanceDashboardView.as_view(), name='finance_dashboard'),
+    path('financeiro/export-excel/', FinanceExportExcelView.as_view(), name='finance_export_excel'),
+    path('financeiro/export-pdf/<int:pk>/', FinanceExportPdfView.as_view(), name='finance_export_pdf'),
+    path('financeiro/invoice/<int:pk>/', FinanceInvoiceView.as_view(), name='finance_invoice'),
+    path('dashboard/update-status/', BookingStatusUpdateView.as_view(), name='update_status'),
+    path('dashboard/delete/', DeleteBookingView.as_view(), name='delete_booking'),
+    path('os/', OrdemServicoListView.as_view(), name='os_list'),
+    path('os/create/<int:booking_id>/', OrdemServicoCreateFromBookingView.as_view(), name='create_os'),
+    path('os/<int:pk>/', OrdemServicoDetailView.as_view(), name='os_detail'),
+    path('os/<int:pk>/service/add/', OrdemServicoServiceItemCreateView.as_view(), name='os_service_add'),
+    path('os/<int:pk>/service/<int:item_pk>/delete/', OrdemServicoServiceItemDeleteView.as_view(), name='os_service_delete'),
+    path('os/<int:pk>/part/add/', OrdemServicoPartItemCreateView.as_view(), name='os_part_add'),
+    path('os/<int:pk>/part/<int:item_pk>/delete/', OrdemServicoPartItemDeleteView.as_view(), name='os_part_delete'),
+    path('os/<int:pk>/financial/', OrdemServicoFinancialUpdateView.as_view(), name='os_financial_update'),
+    path('os/<int:pk>/update-status/', OrdemServicoStatusUpdateView.as_view(), name='update_os_status'),
+    path('os/<int:pk>/print/', OrdemServicoPrintView.as_view(), name='os_print'),
+]

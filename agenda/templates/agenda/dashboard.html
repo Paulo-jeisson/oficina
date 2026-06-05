@@ -1,0 +1,184 @@
+{% extends 'agenda/base.html' %}
+{% block content %}
+<section class="dashboard-overview">
+    <div class="dashboard-head">
+        <div>
+            <p class="eyebrow">Painel da oficina</p>
+            <h1>Visão geral dos agendamentos</h1>
+        </div>
+        <div class="panel-actions">
+            <a class="btn btn-primary" href="{% url 'agenda:booking' %}">Voltar para agendamento</a>
+        </div>
+    </div>
+
+    <div class="summary-grid">
+        <article class="summary-card">
+            <h3>Total de agendamentos</h3>
+            <p>{{ total_bookings }}</p>
+        </article>
+        <article class="summary-card">
+            <h3>Horas agendadas hoje</h3>
+            <p>{{ daily_summary.0.booked|default:'0' }} min</p>
+        </article>
+        <article class="summary-card">
+            <h3>Status em progresso</h3>
+            <p>{{ in_progress_count }}</p>
+        </article>
+        <article class="summary-card">
+            <h3>Ocupação hoje</h3>
+            <p>{{ daily_summary.0.occupancy|default:'0' }}%</p>
+        </article>
+    </div>
+
+    <section class="filters-panel">
+        <form class="filters-form" method="get">
+            <div class="filter-field">
+                <label for="id_q">Pesquisar</label>
+                <input id="id_q" name="q" value="{{ query }}" placeholder="Nome ou veículo" />
+            </div>
+            <div class="filter-field">
+                <label for="id_date">Data</label>
+                <input id="id_date" type="date" name="date" value="{{ date_filter }}" />
+            </div>
+            <div class="filter-field">
+                <label for="id_status">Status</label>
+                <select id="id_status" name="status">
+                    <option value="">Todos</option>
+                    {% for value, label in status_choices %}
+                        <option value="{{ value }}" {% if status_filter == value %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <button class="btn btn-primary" type="submit">Filtrar</button>
+            <a class="btn btn-secondary" href="{% url 'agenda:dashboard' %}">Limpar</a>
+        </form>
+    </section>
+
+    {% if selected_schedule %}
+    <section class="schedule-panel">
+        <div class="table-card">
+            <h2>Horários ocupados em {{ date_filter|date:'d/m/Y' }}</h2>
+            <ul class="schedule-list">
+                {% for item in selected_schedule %}
+                <li>
+                    <strong>{{ item.label }}</strong>
+                    <span>{{ item.service }} - {{ item.duration }}</span>
+                    <span class="schedule-status">{{ item.status }}</span>
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+    </section>
+    {% endif %}
+
+    <section class="table-panel">
+        <div class="table-card">
+            <div class="table-header-actions">
+                <h2>Agendamentos</h2>
+                <a class="btn btn-primary" href="{% url 'agenda:export_bookings_excel' %}{% if filter_querystring %}?{{ filter_querystring }}{% endif %}">Exportar para Excel</a>
+            </div>
+            <div class="overflow-table">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Nome</th>
+                            <th>Telefone</th>
+                            <th>Marca / Modelo</th>
+                            <th>Ano</th>
+                            <th>Problema</th>
+                            <th>Tempo</th>
+                            <th>Data</th>
+                            <th>Status</th>
+                            <th>OS</th>
+                            <th>Deletar</th>
+                            <th>Ação</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for booking in bookings %}
+                        <tr>
+                            <td>{{ booking.full_name }}</td>
+                            <td>{{ booking.phone }}</td>
+                            <td>{{ booking.vehicle_brand }} / {{ booking.vehicle_model }}</td>
+                            <td>{{ booking.vehicle_year }}</td>
+                            <td>{{ booking.problem_description|truncatechars:40 }}</td>
+                            <td>{{ booking.duration_label }}</td>
+                            <td>{{ booking.scheduled_date|date:'d/m/Y' }}</td>
+                            <td>{{ booking.status_label }}</td>
+                            <td>
+                                {% if booking.has_os %}
+                                    <a class="btn btn-secondary" href="{% url 'agenda:os_detail' booking.ordem_servico.pk %}">{{ booking.ordem_servico.order_number }}</a>
+                                {% else %}
+                                    <a class="btn btn-secondary" href="{% url 'agenda:create_os' booking.pk %}">Gerar OS</a>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <form method="post" action="{% url 'agenda:delete_booking' %}" class="delete-form" onsubmit="return confirm('Tem certeza que deseja excluir esse agendamento? O horário será liberado automaticamente.');">
+                                    {% csrf_token %}
+                                    <input type="hidden" name="booking_id" value="{{ booking.id }}">
+                                    <button class="btn btn-danger" type="submit">Deletar</button>
+                                </form>
+                            </td>
+                            <td>
+                                <form method="post" action="{% url 'agenda:update_status' %}" class="status-form">
+                                    {% csrf_token %}
+                                    <input type="hidden" name="booking_id" value="{{ booking.id }}">
+                                    <select name="status" aria-label="Atualizar status">
+                                        {% for value, label in status_choices %}
+                                        <option value="{{ value }}" {% if booking.status == value %}selected{% endif %}>{{ label }}</option>
+                                        {% endfor %}
+                                    </select>
+                                    <button class="btn btn-tertiary" type="submit">Salvar</button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="11">Nenhum agendamento encontrado.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <div class="pagination-controls">
+            <div class="pagination-info">
+                Página <strong>{{ bookings.number }}</strong> de <strong>{{ paginator.num_pages }}</strong> 
+                ({{ total_bookings }} agendamentos)
+            </div>
+            <div class="pagination-buttons">
+                {% if bookings.has_previous %}
+                    <a class="btn btn-secondary" href="?page=1{% if query %}&q={{ query }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}{% if date_filter %}&date={{ date_filter }}{% endif %}">Primeira</a>
+                    <a class="btn btn-secondary" href="?page={{ bookings.previous_page_number }}{% if query %}&q={{ query }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}{% if date_filter %}&date={{ date_filter }}{% endif %}">Anterior</a>
+                {% endif %}
+                
+                {% if bookings.has_next %}
+                    <a class="btn btn-secondary" href="?page={{ bookings.next_page_number }}{% if query %}&q={{ query }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}{% if date_filter %}&date={{ date_filter }}{% endif %}">Próximo</a>
+                    <a class="btn btn-secondary" href="?page={{ paginator.num_pages }}{% if query %}&q={{ query }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}{% if date_filter %}&date={{ date_filter }}{% endif %}">Última</a>
+                {% endif %}
+            </div>
+        </div>
+    </section>
+
+    <section class="calendar-panel">
+        <h2>Calendário de serviços</h2>
+        <div class="calendar-grid">
+            {% for day in daily_summary %}
+            <article class="calendar-card{% if day.available == 0 %} full{% endif %}">
+                <h3>{{ day.date|date:'D, d/m' }}</h3>
+                <p><strong>{{ day.booked }} min</strong> agendados</p>
+                <p>{{ day.available }} min disponíveis</p>
+                <p class="calendar-status">{% if day.available == 0 %}Dia cheio{% else %}Aberto{% endif %}</p>
+                {% if day.intervals %}
+                <ul class="day-intervals">
+                    {% for interval in day.intervals %}
+                    <li>{{ interval.label }} - {{ interval.service }} {{ interval.status }}</li>
+                    {% endfor %}
+                </ul>
+                {% endif %}
+            </article>
+            {% endfor %}
+        </div>
+    </section>
+</section>
+{% endblock %}

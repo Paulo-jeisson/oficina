@@ -1,0 +1,226 @@
+{% extends 'agenda/base.html' %}
+{% block content %}
+<section class="os-detail-panel">
+    <div class="dashboard-head">
+        <div>
+            <p class="eyebrow">Ordem de Serviço</p>
+            <h1>{{ ordem.order_number }}</h1>
+            <p>Status: <span class="status-badge status-{{ ordem.status }}">{{ ordem.status_label }}</span></p>
+        </div>
+        <div class="panel-actions">
+            <a class="btn btn-secondary" href="{% url 'agenda:os_print' ordem.pk %}">Imprimir cupom</a>
+            <a class="btn btn-primary" href="{% url 'agenda:os_list' %}">Voltar</a>
+        </div>
+    </div>
+
+    <div class="os-layout">
+        <div class="os-main">
+            <div class="os-card">
+                <h3>Cliente e Veículo</h3>
+                <div class="info-row">
+                    <div>
+                        <p><strong>Cliente:</strong> {{ ordem.client_name }}</p>
+                        <p><strong>Telefone:</strong> {{ ordem.phone }}</p>
+                    </div>
+                    <div>
+                        <p><strong>Veículo:</strong> {{ ordem.vehicle_brand }} {{ ordem.vehicle_model }}</p>
+                        <p><strong>Placa:</strong> {{ ordem.plate|default:'Não informada' }}</p>
+                        <p><strong>Ano:</strong> {{ ordem.vehicle_year }}</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="os-card">
+                <h3>Problema e Observações</h3>
+                <p><strong>Problema:</strong> {{ ordem.problem_description }}</p>
+                <p><strong>Data:</strong> {{ ordem.scheduled_date|date:'d/m/Y' }} - <strong>Tempo estimado:</strong> {{ ordem.duration_label }}</p>
+                <p><strong>Observações:</strong> {{ ordem.observations|default:'Nenhuma' }}</p>
+            </div>
+
+            <div class="os-card os-services">
+                <div class="card-header">
+                    <h3>Serviços Executados</h3>
+                    <button class="btn btn-sm btn-primary" onclick="toggleForm('serviceForm')">+ Adicionar</button>
+                </div>
+
+                <form id="serviceForm" method="post" action="{% url 'agenda:os_service_add' ordem.pk %}" style="display:none; margin-bottom: 1rem;">
+                    {% csrf_token %}
+                    <div class="form-row">
+                        {{ service_form.description }}
+                        {{ service_form.quantity }}
+                        {{ service_form.unit_price }}
+                        <button type="submit" class="btn btn-sm btn-success">Adicionar</button>
+                    </div>
+                </form>
+
+                {% if ordem.service_items.all %}
+                <table class="os-table">
+                    <thead>
+                        <tr>
+                            <th>Serviço</th>
+                            <th>Qtd</th>
+                            <th>Valor Unit.</th>
+                            <th>Subtotal</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in ordem.service_items.all %}
+                        <tr>
+                            <td>{{ item.description }}</td>
+                            <td>{{ item.quantity }}</td>
+                            <td>R$ {{ item.unit_price|floatformat:2 }}</td>
+                            <td>R$ {{ item.total_price|floatformat:2 }}</td>
+                            <td>
+                                <form method="post" action="{% url 'agenda:os_service_delete' ordem.pk item.pk %}" style="display:inline;">
+                                    {% csrf_token %}
+                                    <button type="submit" class="btn btn-xs btn-danger" onclick="return confirm('Remover?')">Remover</button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                <div class="os-total">
+                    <strong>Subtotal serviços:</strong> R$ {{ ordem.service_value|floatformat:2 }}
+                </div>
+                {% else %}
+                <p class="empty-state">Nenhum serviço adicionado</p>
+                {% endif %}
+            </div>
+
+            <div class="os-card os-parts">
+                <div class="card-header">
+                    <h3>Peças Utilizadas</h3>
+                    <button class="btn btn-sm btn-primary" onclick="toggleForm('partForm')">+ Adicionar</button>
+                </div>
+
+                <form id="partForm" method="post" action="{% url 'agenda:os_part_add' ordem.pk %}" style="display:none; margin-bottom: 1rem;">
+                    {% csrf_token %}
+                    <div class="form-row">
+                        {{ part_form.description }}
+                        {{ part_form.quantity }}
+                        {{ part_form.unit_price }}
+                        <button type="submit" class="btn btn-sm btn-success">Adicionar</button>
+                    </div>
+                </form>
+
+                {% if ordem.part_items.all %}
+                <table class="os-table">
+                    <thead>
+                        <tr>
+                            <th>Peça</th>
+                            <th>Qtd</th>
+                            <th>Valor Unit.</th>
+                            <th>Subtotal</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in ordem.part_items.all %}
+                        <tr>
+                            <td>{{ item.description }}</td>
+                            <td>{{ item.quantity }}</td>
+                            <td>R$ {{ item.unit_price|floatformat:2 }}</td>
+                            <td>R$ {{ item.total_price|floatformat:2 }}</td>
+                            <td>
+                                <form method="post" action="{% url 'agenda:os_part_delete' ordem.pk item.pk %}" style="display:inline;">
+                                    {% csrf_token %}
+                                    <button type="submit" class="btn btn-xs btn-danger" onclick="return confirm('Remover?')">Remover</button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                <div class="os-total">
+                    <strong>Subtotal peças:</strong> R$ {{ ordem.parts_value|floatformat:2 }}
+                </div>
+                {% else %}
+                <p class="empty-state">Nenhuma peça adicionada</p>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="os-sidebar">
+            <div class="os-card">
+                <h3>Resumo Financeiro</h3>
+                <div class="financial-summary">
+                    <div class="summary-row">
+                        <span>Serviços:</span>
+                        <strong>R$ {{ ordem.service_value|floatformat:2 }}</strong>
+                    </div>
+                    <div class="summary-row">
+                        <span>Peças:</span>
+                        <strong>R$ {{ ordem.parts_value|floatformat:2 }}</strong>
+                    </div>
+                    <hr>
+                    <div class="summary-row total">
+                        <span>Total:</span>
+                        <strong>R$ {{ ordem.total_value|floatformat:2 }}</strong>
+                    </div>
+                    <!-- lucro estimado removido -->
+                </div>
+            </div>
+
+            <div class="os-card">
+                <h3>Dados Financeiros</h3>
+                <form method="post" action="{% url 'agenda:os_financial_update' ordem.pk %}">
+                    {% csrf_token %}
+                    <div class="field-group">
+                        {{ financial_form.mechanic_name }}
+                    </div>
+                    <div class="field-group">
+                        {{ financial_form.mileage }}
+                    </div>
+                    <div class="field-group">
+                        {{ financial_form.payment_method }}
+                    </div>
+                    <div class="field-group">
+                        {{ financial_form.warranty }}
+                    </div>
+                    <div class="field-group">
+                        {{ financial_form.observations }}
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-block">Salvar dados</button>
+                </form>
+            </div>
+
+            <div class="os-card">
+                <h3>Status da OS</h3>
+                <form method="post" action="{% url 'agenda:update_os_status' ordem.pk %}">
+                    {% csrf_token %}
+                    <div class="field-group">
+                        {{ status_form.status }}
+                    </div>
+                    <div class="field-group">
+                        {{ status_form.note }}
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-block">Atualizar status</button>
+                </form>
+            </div>
+
+            <div class="os-card">
+                <h3>Histórico</h3>
+                <ul class="timeline-list">
+                    {% for item in history %}
+                    <li>
+                        <small>{{ item.created_at|date:'d/m H:i' }}</small>
+                        <p>{{ item.get_status_display }} por {{ item.author_name }}</p>
+                    </li>
+                    {% empty %}
+                    <li><small>Nenhum histórico</small></li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+    </div>
+</section>
+
+<script>
+function toggleForm(formId) {
+    const form = document.getElementById(formId);
+    form.style.display = form.style.display === 'none' ? 'block' : 'none';
+}
+</script>
+{% endblock %}

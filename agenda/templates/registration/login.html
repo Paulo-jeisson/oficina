@@ -1,0 +1,25 @@
+{% extends 'agenda/base.html' %}
+{% block content %}
+<section class="form-section">
+    <div class="form-wrapper">
+        <h2>Login da Oficina</h2>
+        <p>Entre com seu usuário e senha para acessar o painel interno.</p>
+        <form method="post" novalidate>
+            {% csrf_token %}
+            {% if form.non_field_errors %}
+                <div class="field-error-message">{{ form.non_field_errors }}</div>
+            {% endif %}
+            <div class="field-group">
+                <label for="id_username">Usuário</label>
+                {{ form.username }}
+            </div>
+            <div class="field-group">
+                <label for="id_password">Senha</label>
+                {{ form.password }}
+            </div>
+            <button class="btn btn-primary" type="submit">Entrar</button>
+        </form>
+        <p class="muted">Somente funcionários autorizados têm acesso ao painel interno.</p>
+    </div>
+</section>
+{% endblock %}

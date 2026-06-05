@@ -1,0 +1,79 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ ordem.order_number }} - Ordem de Serviço</title>
+    <link rel="stylesheet" href="{% static 'agenda/styles.css' %}">
+    <style>
+        body { background: #f4f6fb; padding: 2rem; }
+        .print-card { max-width: 900px; margin: 0 auto; background: #fff; padding: 2rem; border-radius: 24px; box-shadow: 0 6px 18px rgba(0,0,0,0.08); }
+        .print-header { display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin-bottom: 1.75rem; }
+        .print-logo { font-size: 1.25rem; font-weight: 800; color: #1f4f8b; }
+        .print-title { text-align: right; }
+        .print-title h1 { margin: 0; font-size: 1.6rem; }
+        .record-block { display: grid; grid-template-columns: repeat(2, minmax(220px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
+        .record-section { background: #f8fafe; border-radius: 18px; padding: 1rem; }
+        .record-section h3 { margin-top: 0; }
+        .record-section p { margin: 0.55rem 0; }
+        .signature-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 2rem; }
+        .signature-box { min-height: 120px; border-top: 1px solid #cbd5e1; padding-top: 0.8rem; color: #475569; }
+        .print-controls { margin-bottom: 1.25rem; display: flex; justify-content: flex-end; gap: 0.75rem; }
+        .btn-print { background: #1f4f8b; color: #fff; padding: 0.8rem 1.25rem; border-radius: 14px; border: none; cursor: pointer; }
+        @media print {
+            .print-controls { display: none; }
+            body { padding: 0; }
+            .print-card { box-shadow: none; border-radius: 0; }
+        }
+    </style>
+</head>
+<body>
+    <div class="print-controls">
+        <button class="btn-print" onclick="window.print()">Imprimir / Gerar PDF</button>
+    </div>
+    <div class="print-card">
+        <div class="print-header">
+            <div class="print-logo">Oficina</div>
+            <div class="print-title">
+                <span>Número da OS</span>
+                <h1>{{ ordem.order_number }}</h1>
+            </div>
+        </div>
+
+        <div class="record-block">
+            <div class="record-section">
+                <h3>Cliente</h3>
+                <p><strong>Nome:</strong> {{ ordem.client_name }}</p>
+                <p><strong>Telefone:</strong> {{ ordem.phone }}</p>
+            </div>
+            <div class="record-section">
+                <h3>Veículo</h3>
+                <p><strong>Marca:</strong> {{ ordem.vehicle_brand }}</p>
+                <p><strong>Modelo:</strong> {{ ordem.vehicle_model }}</p>
+                <p><strong>Ano:</strong> {{ ordem.vehicle_year }}</p>
+                <p><strong>Placa:</strong> {{ ordem.plate|default:'-' }}</p>
+            </div>
+        </div>
+
+        <div class="record-block">
+            <div class="record-section" style="grid-column: span 2;">
+                <h3>Serviço solicitado</h3>
+                <p><strong>Problema relatado:</strong> {{ ordem.problem_description }}</p>
+                <p><strong>Data do agendamento:</strong> {{ ordem.scheduled_date|date:'d/m/Y' }}</p>
+                <p><strong>Tempo estimado:</strong> {{ ordem.duration_label }}</p>
+                <p><strong>Observações:</strong> {{ ordem.observations|default:'Nenhuma observação registrada.' }}</p>
+            </div>
+        </div>
+
+        <div class="signature-row">
+            <div class="signature-box">
+                <p>Assinatura do cliente</p>
+            </div>
+            <div class="signature-box">
+                <p>Assinatura da oficina</p>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
