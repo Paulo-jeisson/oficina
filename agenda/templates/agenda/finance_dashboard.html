@@ -85,7 +85,7 @@
             <div class="table-header-actions">
                 <h2>Relatórios financeiros</h2>
                 <div class="table-header-buttons">
-                    <a class="btn btn-secondary" href="{% url 'agenda:finance_export_excel' %}?start_date={{ start_date }}&end_date={{ end_date }}&client={{ client }}&vehicle={{ vehicle }}&mechanic={{ mechanic }}&status={{ status_filter }}">Exportar Excel</a>
+                    <a class="btn btn-secondary" href="{% url 'agenda:finance_export_excel' %}{% if filter_querystring %}?{{ filter_querystring }}{% endif %}">Exportar Excel</a>
                 </div>
             </div>
             <div class="overflow-table">
@@ -150,7 +150,7 @@
             <p>R$ {{ parts_total|floatformat:2 }}</p>
         </article>
         <!-- lucro estimado removido -->
-    </div>
+    </section>
 
     <section class="calendar-panel">
         <h2>Serviços mais realizados</h2>
@@ -169,17 +169,26 @@
             {% endfor %}
         </ul>
     </section>
-    <section class="chart-panel">
-        <div class="chart-card">
-            <h2>Faturamento por dia</h2>
+    <section class="chart-panel" aria-label="Gráficos financeiros">
+        <div class="chart-card chart-card-line">
+            <div class="chart-card-header">
+                <span>Receita diária</span>
+                <strong>Faturamento por dia</strong>
+            </div>
             <canvas id="dailyChart"></canvas>
         </div>
-        <div class="chart-card">
-            <h2>Faturamento por mês</h2>
+        <div class="chart-card chart-card-bar">
+            <div class="chart-card-header">
+                <span>Receita mensal</span>
+                <strong>Faturamento por mês</strong>
+            </div>
             <canvas id="monthlyChart"></canvas>
         </div>
-        <div class="chart-card">
-            <h2>Serviços x Peças</h2>
+        <div class="chart-card chart-card-donut">
+            <div class="chart-card-header">
+                <span>Composição</span>
+                <strong>Serviços x Peças</strong>
+            </div>
             <canvas id="servicePartsChart"></canvas>
         </div>
     </section>
@@ -198,6 +207,8 @@
 
     function createChart(id, type, labels, data, label) {
         const ctx = document.getElementById(id).getContext('2d');
+        const isDoughnut = type === 'doughnut';
+
         new Chart(ctx, {
             type,
             data: {
@@ -205,26 +216,62 @@
                 datasets: [{
                     label,
                     data,
-                    backgroundColor: ['#1f4f8b', '#f5a623', '#4f79c2', '#86c3f7', '#f47b50'],
-                    borderColor: '#1f4f8b',
-                    borderWidth: 1,
+                    backgroundColor: isDoughnut
+                        ? ['#4f8cff', '#f5a623', '#35c48b', '#f47b50']
+                        : type === 'line'
+                            ? 'rgba(79, 140, 255, 0.18)'
+                            : 'rgba(79, 140, 255, 0.78)',
+                    borderColor: type === 'bar' ? 'rgba(79, 140, 255, 0)' : '#7aa2ff',
+                    borderWidth: type === 'line' ? 2 : 1,
+                    borderRadius: type === 'bar' ? 8 : 0,
+                    fill: type === 'line',
+                    tension: type === 'line' ? 0.35 : 0,
                 }]
             },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
+                cutout: isDoughnut ? '64%' : undefined,
                 plugins: {
                     legend: {
-                        position: 'top',
+                        position: isDoughnut ? 'bottom' : 'top',
+                        labels: {
+                            color: '#cbd5e1',
+                            boxWidth: 10,
+                            boxHeight: 10,
+                            usePointStyle: true,
+                        },
                     },
                     tooltip: {
+                        backgroundColor: '#0b0d12',
+                        borderColor: 'rgba(255, 255, 255, 0.12)',
+                        borderWidth: 1,
                         callbacks: {
                             label: function(context) {
-                                return `R$ ${context.parsed.y?.toFixed(2) || context.parsed}`;
+                                const value = isDoughnut ? context.parsed : context.parsed.y;
+                                return `R$ ${Number(value || 0).toFixed(2)}`;
                             }
                         }
                     }
-                }
+                },
+                scales: isDoughnut ? {} : {
+                    x: {
+                        grid: {
+                            display: false,
+                        },
+                        ticks: {
+                            color: '#9ca3af',
+                        },
+                    },
+                    y: {
+                        grid: {
+                            color: 'rgba(255, 255, 255, 0.08)',
+                        },
+                        ticks: {
+                            color: '#9ca3af',
+                        },
+                    },
+                },
             }
         });
     }

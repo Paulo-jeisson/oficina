@@ -27,6 +27,23 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 import threading
 
 
+class PublicHomeView(TemplateView):
+    template_name = 'agenda/site_home.html'
+
+
+class PublicPlansView(TemplateView):
+    template_name = 'agenda/site_plans.html'
+
+
+class PublicContactView(TemplateView):
+    template_name = 'agenda/site_contact.html'
+
+
+class SubscriptionBlockedView(LoginRequiredMixin, TemplateView):
+    template_name = 'agenda/subscription_blocked.html'
+    login_url = reverse_lazy('agenda:login')
+
+
 @require_http_methods(['GET', 'POST'])
 def logout_view(request):
     logout(request)
@@ -110,6 +127,20 @@ class BookingCreateView(FormView):
         return context
 
 
+def get_public_booking_oficina(request, oficina_id=None):
+    oficina = getattr(request, 'oficina', None)
+    if oficina is not None:
+        return oficina
+
+    if oficina_id:
+        try:
+            return Oficina.objects.get(pk=oficina_id)
+        except (Oficina.DoesNotExist, ValueError, TypeError):
+            return None
+
+    return Oficina.objects.order_by('nome').first()
+
+
 class AvailableSlotsView(View):
     def get(self, request, *args, **kwargs):
         date_str = request.GET.get('date')
@@ -136,20 +167,12 @@ class AvailableSlotsView(View):
                 'message': 'Não é possível agendar para datas passadas.',
             })
 
-        oficina = getattr(request, 'oficina', None)
+        oficina = get_public_booking_oficina(request, oficina_id)
         if oficina is None:
-            if not oficina_id:
-                return JsonResponse({
-                    'slots': [],
-                    'message': 'Selecione a oficina para exibir horários disponíveis.',
-                })
-            try:
-                oficina = Oficina.objects.get(pk=oficina_id)
-            except (Oficina.DoesNotExist, ValueError, TypeError):
-                return JsonResponse({
-                    'slots': [],
-                    'message': 'Oficina inválida.',
-                })
+            return JsonResponse({
+                'slots': [],
+                'message': 'Nenhuma oficina cadastrada para receber agendamentos.',
+            })
 
         if Booking.available_minutes_for_date(scheduled_date, oficina=oficina) < duration:
             return JsonResponse({

@@ -1,0 +1,27 @@
+{% extends 'agenda/base.html' %}
+{% block body_class %}public-page{% endblock %}
+{% block content %}
+<section class="public-page-head">
+    <p class="public-eyebrow">Planos</p>
+    <h1>Comece grátis por 3 dias e organize sua oficina com mais controle.</h1>
+    <p>Um plano simples para usar agenda, O.S e financeiro no mesmo sistema.</p>
+</section>
+
+<section class="public-pricing-wrap">
+    <article class="public-pricing-card">
+        <span class="recommended-badge">Mais indicado</span>
+        <div class="pricing-header">
+            <span>Plano Oficina Online</span>
+            <strong>R$ 150,00</strong>
+            <small>por mês</small>
+        </div>
+        <ul class="pricing-list">
+            <li>Teste grátis de 3 dias.</li>
+            <li>Controle de clientes, veículos e ordens de serviço.</li>
+            <li>Agenda e financeiro integrados no mesmo painel.</li>
+            <li>Pagamento por Pix e cartão de crédito.</li>
+        </ul>
+        <a class="btn btn-primary" href="{% url 'agenda:contact' %}">Testar agora grátis</a>
+    </article>
+</section>
+{% endblock %}

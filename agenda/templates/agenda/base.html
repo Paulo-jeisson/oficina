@@ -4,23 +4,30 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Oficina Mecânica | Agendamento</title>
+    <title>Oficina Online | Sistema SaaS para oficinas</title>
     <link rel="stylesheet" href="{% static 'agenda/styles.css' %}">
     <meta name="theme-color" content="#0b0d12">
 </head>
-<body>
+<body class="{% block body_class %}{% endblock %}">
     <header class="site-header">
         <div class="container header-inner">
-            <a class="brand" href="{% url 'agenda:booking' %}">Oficina Online</a>
+            <a class="brand" href="{% url 'agenda:home' %}">
+                <span class="brand-mark">OO</span>
+                <span>Oficina Online</span>
+            </a>
             <nav class="site-nav">
-                <a href="{% url 'agenda:booking' %}">Agendar serviço</a>
                 {% if request.user.is_authenticated %}
+                    <a href="{% url 'agenda:booking' %}">Agendar serviço</a>
                     <a href="{% url 'agenda:dashboard' %}">Painel da oficina</a>
                     <a href="{% url 'agenda:finance_dashboard' %}">Financeiro</a>
                     <a href="{% url 'agenda:os_list' %}">Ordens de Serviço</a>
-                    <a href="{% url 'agenda:logout' %}">Sair</a>
+                    <a class="nav-pill nav-pill-secondary" href="{% url 'agenda:logout' %}">Sair</a>
                 {% else %}
-                    <a href="{% url 'agenda:login' %}">Login oficina</a>
+                    <a href="{% url 'agenda:home' %}">Início</a>
+                    <a href="{% url 'agenda:plans' %}">Planos</a>
+                    <a href="{% url 'agenda:contact' %}">Contato</a>
+                    <a class="nav-pill" href="{% url 'agenda:contact' %}">Começar teste grátis</a>
+                    <a class="nav-pill nav-pill-secondary" href="{% url 'agenda:login' %}">Entrar no sistema</a>
                 {% endif %}
             </nav>
         </div>
@@ -32,7 +39,18 @@
 
     <footer class="site-footer">
         <div class="container footer-inner">
-            <p>Sistema para oficina mecânica.</p>
+            <div>
+                <a class="brand footer-brand" href="{% url 'agenda:home' %}">
+                    <span class="brand-mark">OO</span>
+                    <span>Oficina Online</span>
+                </a>
+                <p>Sistema SaaS para oficinas que querem mais controle na agenda, OS e financeiro.</p>
+            </div>
+            <nav class="footer-nav">
+                <a href="{% url 'agenda:plans' %}">Planos</a>
+                <a href="{% url 'agenda:contact' %}">Contato</a>
+                <a href="{% url 'agenda:login' %}">Entrar no sistema</a>
+            </nav>
         </div>
     </footer>
     <script src="{% static 'agenda/scripts.js' %}" defer></script>

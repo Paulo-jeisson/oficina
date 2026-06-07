@@ -21,14 +21,9 @@ document.addEventListener('DOMContentLoaded', function () {
             return;
         }
 
+        startTimeSelect.disabled = false;
         const selectedDate = dateInput.value;
         const selectedDuration = durationSelect.value;
-
-        if (oficinaSelect && !oficinaSelect.value) {
-            startTimeSelect.innerHTML = '<option value="">Selecione a oficina</option>';
-            slotMessage.textContent = 'Selecione a oficina para ver os horários disponíveis.';
-            return;
-        }
 
         if (!selectedDate || !selectedDuration) {
             startTimeSelect.innerHTML = '<option value="">Selecione data e duração</option>';
@@ -40,7 +35,7 @@ document.addEventListener('DOMContentLoaded', function () {
             date: selectedDate,
             duration: selectedDuration,
         });
-        if (oficinaSelect) {
+        if (oficinaSelect && oficinaSelect.value) {
             params.set('oficina', oficinaSelect.value);
         }
 
@@ -49,7 +44,7 @@ document.addEventListener('DOMContentLoaded', function () {
             .then((data) => {
                 startTimeSelect.innerHTML = '';
                 if (data.slots.length === 0) {
-                    startTimeSelect.innerHTML = '<option value="">Nenhum horário disponível</option>';
+                    startTimeSelect.disabled = true;
                     slotMessage.textContent = data.message || 'Nenhum horário disponível para a combinação selecionada.';
                     return;
                 }

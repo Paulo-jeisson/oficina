@@ -1,7 +1,10 @@
 from django.contrib.auth.views import LoginView
-from django.urls import path, reverse_lazy
-from django.views.generic import RedirectView
+from django.urls import path
 from .views import (
+    PublicHomeView,
+    PublicPlansView,
+    PublicContactView,
+    SubscriptionBlockedView,
     BookingCreateView,
     BookingSuccessView,
     DashboardView,
@@ -29,7 +32,10 @@ from .views import (
 app_name = 'agenda'
 
 urlpatterns = [
-    path('', RedirectView.as_view(pattern_name='agenda:booking', permanent=False), name='home'),
+    path('', PublicHomeView.as_view(), name='home'),
+    path('planos/', PublicPlansView.as_view(), name='plans'),
+    path('contato/', PublicContactView.as_view(), name='contact'),
+    path('assinatura/bloqueada/', SubscriptionBlockedView.as_view(), name='subscription_blocked'),
     path('agendar/', BookingCreateView.as_view(), name='booking'),
     path('agendar/success/', BookingSuccessView.as_view(), name='booking_success'),
     path('agendar/available-slots/', AvailableSlotsView.as_view(), name='available_slots'),

@@ -1,0 +1,113 @@
+{% extends 'agenda/base.html' %}
+{% block body_class %}public-page{% endblock %}
+{% block content %}
+<section class="public-hero">
+    <div class="public-hero-copy">
+        <p class="public-eyebrow">Oficina Online</p>
+        <h1>Sistema para oficina mecânica com O.S, agenda e financeiro</h1>
+        <p>Controle clientes, veículos, ordens de serviço, agenda e financeiro em um só lugar.</p>
+        <div class="public-actions">
+            <a class="btn btn-primary" href="{% url 'agenda:contact' %}">Testar agora grátis</a>
+            <a class="btn btn-secondary" href="{% url 'agenda:plans' %}">Ver planos</a>
+        </div>
+        <div class="public-payment-note">
+            <span>Teste grátis: 3 dias</span>
+            <span>Pix e cartão de crédito</span>
+        </div>
+    </div>
+
+    <div class="system-mockup" aria-label="Prévia visual do sistema Oficina Online">
+        <div class="mockup-topbar">
+            <span></span>
+            <span></span>
+            <span></span>
+        </div>
+        <div class="mockup-content">
+            <aside class="mockup-sidebar">
+                <strong>Oficina Online</strong>
+                <span></span>
+                <span></span>
+                <span></span>
+            </aside>
+            <div class="mockup-main">
+                <div class="mockup-summary">
+                    <article>
+                        <span>Agenda hoje</span>
+                        <strong>18</strong>
+                    </article>
+                    <article>
+                        <span>O.S abertas</span>
+                        <strong>7</strong>
+                    </article>
+                    <article>
+                        <span>Financeiro</span>
+                        <strong>R$ 8.450</strong>
+                    </article>
+                </div>
+                <div class="mockup-chart">
+                    <span class="bar-42"></span>
+                    <span class="bar-66"></span>
+                    <span class="bar-48"></span>
+                    <span class="bar-78"></span>
+                    <span class="bar-58"></span>
+                </div>
+                <div class="mockup-table">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="public-stats">
+    <article>
+        <strong>3 dias</strong>
+        <span>de teste grátis</span>
+    </article>
+    <article>
+        <strong>R$ 150,00</strong>
+        <span>por mês</span>
+    </article>
+    <article>
+        <strong>Pix</strong>
+        <span>e cartão de crédito</span>
+    </article>
+    <article>
+        <strong>1 painel</strong>
+        <span>para agenda, O.S e financeiro</span>
+    </article>
+</section>
+
+<section class="public-section-head">
+    <p class="public-eyebrow">Funcionalidades</p>
+    <h2>Uma rotina mais organizada para sua oficina</h2>
+</section>
+
+<section class="public-card-grid">
+    <article class="public-feature-card">
+        <span>01</span>
+        <h3>Agenda inteligente</h3>
+        <p>Visualize horários, acompanhe solicitações e organize a entrada de veículos.</p>
+    </article>
+    <article class="public-feature-card">
+        <span>02</span>
+        <h3>Ordens de serviço</h3>
+        <p>Controle clientes, veículos, status, serviços, peças e histórico em cada O.S.</p>
+    </article>
+    <article class="public-feature-card">
+        <span>03</span>
+        <h3>Financeiro da oficina</h3>
+        <p>Acompanhe faturamento, pagamentos e indicadores importantes em poucos cliques.</p>
+    </article>
+</section>
+
+<section class="public-cta">
+    <div>
+        <p class="public-eyebrow">Comece agora</p>
+        <h2>Teste o Oficina Online por 3 dias e veja sua operação com mais controle.</h2>
+    </div>
+    <a class="btn btn-primary" href="{% url 'agenda:contact' %}">Testar agora grátis</a>
+</section>
+{% endblock %}

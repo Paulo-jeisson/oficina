@@ -1,6 +1,7 @@
 from django.contrib import admin
 from .models import (
     Booking,
+    Assinatura,
     Oficina,
     OrdemServico,
     OrdemServicoStatusHistory,
@@ -13,11 +14,39 @@ from .models import (
 )
 
 
+class AssinaturaInline(admin.StackedInline):
+    model = Assinatura
+    extra = 0
+    fields = (
+        'status',
+        'trial_started_at',
+        'trial_ends_at',
+        'due_date',
+        'last_payment_at',
+        'payment_method',
+        'monthly_amount',
+    )
+
+
 @admin.register(Oficina)
 class OficinaAdmin(admin.ModelAdmin):
     list_display = ('nome', 'dono', 'created_at')
     search_fields = ('nome', 'dono__username', 'dono__email')
     readonly_fields = ('created_at',)
+    inlines = [AssinaturaInline]
+
+
+@admin.register(Assinatura)
+class AssinaturaAdmin(admin.ModelAdmin):
+    list_display = ('oficina', 'status', 'due_date', 'last_payment_at', 'payment_method', 'monthly_amount')
+    list_filter = ('status', 'payment_method', 'due_date')
+    search_fields = ('oficina__nome', 'oficina__dono__username', 'oficina__dono__email')
+    actions = ['marcar_como_pago']
+
+    @admin.action(description='Marcar cliente como ativo/pago')
+    def marcar_como_pago(self, request, queryset):
+        for assinatura in queryset:
+            assinatura.mark_paid(payment_method=assinatura.payment_method or Assinatura.FormaPagamento.PIX)
 
 
 @admin.register(Booking)

@@ -79,8 +79,12 @@ class BookingForm(forms.ModelForm):
         if self.oficina is not None:
             self.fields.pop('oficina', None)
         else:
-            self.fields['oficina'].queryset = Oficina.objects.order_by('nome')
-            self.fields['oficina'].required = True
+            oficinas = Oficina.objects.order_by('nome')
+            self.fields['oficina'].queryset = oficinas
+            self.fields['oficina'].required = False
+            self.fields['oficina'].empty_label = None
+            if not self.data and oficinas.exists():
+                self.fields['oficina'].initial = oficinas.first()
         self.fields['service_type'].choices = ServiceType.choices
         self.fields['duration_minutes'].choices = DURATION_CHOICES
         self.fields['start_time'].choices = [('', 'Selecione data e duração')]
@@ -89,7 +93,7 @@ class BookingForm(forms.ModelForm):
         duration = self.data.get('duration_minutes') or self.initial.get('duration_minutes')
         if scheduled_date and duration:
             try:
-                scheduled_date_value = datetime.strptime(scheduled_date, '%Y-%m-%d').date()
+                scheduled_date_value = self._parse_scheduled_date(scheduled_date)
                 duration_value = int(duration)
                 oficina_value = self.oficina or self._oficina_from_data()
                 self.fields['start_time'].choices = [('', 'Selecione horário')] + Booking.start_time_choices_for_date(
@@ -101,11 +105,21 @@ class BookingForm(forms.ModelForm):
     def _oficina_from_data(self):
         oficina_id = self.data.get('oficina') or self.initial.get('oficina')
         if not oficina_id:
-            return None
+            return Oficina.objects.order_by('nome').first()
         try:
             return Oficina.objects.get(pk=oficina_id)
         except (Oficina.DoesNotExist, ValueError, TypeError):
             return None
+
+    def _parse_scheduled_date(self, value):
+        if isinstance(value, date):
+            return value
+        for date_format in ('%Y-%m-%d', '%d/%m/%Y'):
+            try:
+                return datetime.strptime(value, date_format).date()
+            except (ValueError, TypeError):
+                continue
+        raise ValueError('Invalid date format')
 
     def clean_scheduled_date(self):
         scheduled_date = self.cleaned_data['scheduled_date']
@@ -121,7 +135,10 @@ class BookingForm(forms.ModelForm):
         selected_oficina = self.oficina or cleaned.get('oficina')
 
         if self.oficina is None and not selected_oficina:
-            self.add_error('oficina', _('Selecione a oficina para ver os horários disponíveis.'))
+            selected_oficina = Oficina.objects.order_by('nome').first()
+            cleaned['oficina'] = selected_oficina
+            if selected_oficina is None:
+                self.add_error('oficina', _('Nenhuma oficina cadastrada para receber agendamentos.'))
 
         if start_time and isinstance(start_time, str):
             try:

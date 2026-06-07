@@ -1,0 +1,12 @@
+{% extends 'agenda/base.html' %}
+{% block content %}
+<section class="blocked-panel">
+    <p class="eyebrow">Assinatura</p>
+    <h1>Sua assinatura está bloqueada.</h1>
+    <p>Sua assinatura está bloqueada. Regularize o pagamento para continuar usando o sistema.</p>
+    <div class="hero-actions">
+        <a class="btn btn-primary" href="{% url 'agenda:contact' %}">Regularizar pagamento</a>
+        <a class="btn btn-secondary" href="{% url 'agenda:logout' %}">Sair</a>
+    </div>
+</section>
+{% endblock %}

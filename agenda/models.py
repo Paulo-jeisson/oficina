@@ -90,6 +90,14 @@ class Oficina(models.Model):
     def __str__(self):
         return self.nome
 
+    def ensure_assinatura(self):
+        assinatura, _ = Assinatura.objects.get_or_create(oficina=self)
+        return assinatura
+
+    @property
+    def assinatura_atual(self):
+        return self.ensure_assinatura()
+
 
 class OficinaOwnedModel(models.Model):
     oficina = models.ForeignKey(
@@ -101,6 +109,107 @@ class OficinaOwnedModel(models.Model):
 
     class Meta:
         abstract = True
+
+
+class Assinatura(models.Model):
+    class Status(models.TextChoices):
+        TESTE = 'teste', 'Teste'
+        ATIVO = 'ativo', 'Ativo'
+        VENCIDO = 'vencido', 'Vencido'
+        BLOQUEADO = 'bloqueado', 'Bloqueado'
+
+    class FormaPagamento(models.TextChoices):
+        PIX = 'pix', 'Pix'
+        CARTAO_CREDITO = 'cartao_credito', 'Cartao de credito'
+
+    VALOR_MENSAL_PADRAO = Decimal('150.00')
+    DIAS_TESTE_GRATIS = 3
+    DIAS_TOLERANCIA_BLOQUEIO = 2
+
+    oficina = models.OneToOneField(
+        'agenda.Oficina',
+        on_delete=models.CASCADE,
+        related_name='assinatura',
+        verbose_name='Cliente/empresa',
+    )
+    status = models.CharField(
+        'Status da assinatura',
+        max_length=20,
+        choices=Status.choices,
+        default=Status.TESTE,
+    )
+    trial_started_at = models.DateField('Inicio do teste gratis', default=timezone.localdate)
+    trial_ends_at = models.DateField('Fim do teste gratis', null=True, blank=True)
+    due_date = models.DateField('Vencimento da mensalidade', null=True, blank=True)
+    last_payment_at = models.DateField('Data do ultimo pagamento', null=True, blank=True)
+    payment_method = models.CharField(
+        'Forma de pagamento',
+        max_length=30,
+        choices=FormaPagamento.choices,
+        blank=True,
+    )
+    monthly_amount = models.DecimalField(
+        'Valor mensal',
+        max_digits=8,
+        decimal_places=2,
+        default=VALOR_MENSAL_PADRAO,
+    )
+    created_at = models.DateTimeField('Criada em', auto_now_add=True)
+    updated_at = models.DateTimeField('Atualizada em', auto_now=True)
+
+    class Meta:
+        ordering = ['oficina__nome']
+        verbose_name = 'Assinatura'
+        verbose_name_plural = 'Assinaturas'
+
+    def __str__(self):
+        return f'{self.oficina.nome} - {self.get_status_display()}'
+
+    def save(self, *args, **kwargs):
+        if not self.trial_started_at:
+            self.trial_started_at = timezone.localdate()
+        if not self.trial_ends_at:
+            self.trial_ends_at = self.trial_started_at + timedelta(days=self.DIAS_TESTE_GRATIS)
+        if not self.due_date:
+            self.due_date = self.trial_ends_at
+        if not self.monthly_amount:
+            self.monthly_amount = self.VALOR_MENSAL_PADRAO
+        super().save(*args, **kwargs)
+
+    @property
+    def is_blocked(self):
+        return self.status == self.Status.BLOQUEADO
+
+    def should_block(self, reference_date=None):
+        reference_date = reference_date or timezone.localdate()
+        return (
+            self.status in {self.Status.TESTE, self.Status.VENCIDO}
+            and self.due_date
+            and reference_date > self.due_date + timedelta(days=self.DIAS_TOLERANCIA_BLOQUEIO)
+        )
+
+    def refresh_status(self, save=True, reference_date=None):
+        reference_date = reference_date or timezone.localdate()
+        if self.status == self.Status.BLOQUEADO:
+            return self.status
+        if self.should_block(reference_date=reference_date):
+            self.status = self.Status.BLOQUEADO
+        elif self.status == self.Status.TESTE and self.trial_ends_at and reference_date > self.trial_ends_at:
+            self.status = self.Status.VENCIDO
+        elif self.status == self.Status.ATIVO and self.due_date and reference_date > self.due_date:
+            self.status = self.Status.VENCIDO
+        if save:
+            self.save(update_fields=['status', 'updated_at'])
+        return self.status
+
+    def mark_paid(self, payment_method=None, paid_at=None):
+        paid_at = paid_at or timezone.localdate()
+        self.status = self.Status.ATIVO
+        self.last_payment_at = paid_at
+        self.due_date = paid_at + timedelta(days=30)
+        if payment_method:
+            self.payment_method = payment_method
+        self.save(update_fields=['status', 'last_payment_at', 'due_date', 'payment_method', 'updated_at'])
 
 
 def format_duration(minutes: int) -> str:
