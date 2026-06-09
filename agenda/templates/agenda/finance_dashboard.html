@@ -125,6 +125,20 @@
                 </table>
             </div>
         </div>
+        <div class="pagination-controls">
+            <div class="pagination-info">
+                Pagina <strong>{{ receivables.number }}</strong> de <strong>{{ receivables_paginator.num_pages }}</strong>
+                ({{ total_receivables }} lancamentos)
+            </div>
+            <div class="pagination-buttons">
+                {% if receivables.has_previous %}
+                    <a class="btn btn-secondary" href="?page={{ receivables.previous_page_number }}{% if filter_querystring %}&{{ filter_querystring }}{% endif %}">Anterior</a>
+                {% endif %}
+                {% if receivables.has_next %}
+                    <a class="btn btn-secondary" href="?page={{ receivables.next_page_number }}{% if filter_querystring %}&{{ filter_querystring }}{% endif %}">Proximo</a>
+                {% endif %}
+            </div>
+        </div>
     </section>
 
     <div class="dashboard-head">

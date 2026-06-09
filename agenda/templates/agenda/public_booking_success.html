@@ -1,0 +1,37 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agendamento enviado | {{ oficina.nome }}</title>
+    <link rel="stylesheet" href="{% static 'agenda/styles.css' %}?v=20260608-public-booking-success">
+    <meta name="theme-color" content="#f4f7fb">
+</head>
+<body class="public-page public-booking-page">
+    <main class="public-booking-shell">
+        <section class="public-booking-brand">
+            {% if oficina.logo %}
+                <img src="{{ oficina.logo.url }}" alt="{{ oficina.nome }}">
+            {% else %}
+                <span class="brand-mark">OO</span>
+            {% endif %}
+            <div>
+                <p class="public-eyebrow">Agendamento online</p>
+                <h1>{{ oficina.nome }}</h1>
+                {% if oficina.telefone %}
+                    <p>{{ oficina.telefone }}</p>
+                {% endif %}
+            </div>
+        </section>
+
+        <section class="public-booking-success">
+            <div class="panel-card">
+                <h1>Agendamento enviado com sucesso.</h1>
+                <p>Seu pedido foi recebido. Em breve a oficina entrara em contato.</p>
+                <a class="btn btn-primary" href="{% url 'agenda:public_booking' oficina.slug %}">Fazer novo agendamento</a>
+            </div>
+        </section>
+    </main>
+</body>
+</html>

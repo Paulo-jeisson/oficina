@@ -144,6 +144,41 @@ textarea {
   box-shadow: 0 10px 24px rgba(79, 140, 255, 0.28);
 }
 
+.brand-logo {
+    width: 38px;
+    height: 38px;
+    border-radius: 8px;
+    object-fit: cover;
+}
+
+.messages {
+    display: grid;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+}
+
+.message {
+    border: 1px solid rgba(148, 163, 184, 0.25);
+    border-radius: 8px;
+    padding: 0.85rem 1rem;
+    background: rgba(15, 23, 42, 0.78);
+    color: #e5eefb;
+}
+
+.message-success {
+    border-color: rgba(34, 197, 94, 0.45);
+}
+
+.message-error {
+    border-color: rgba(248, 113, 113, 0.55);
+}
+
+.payment-form {
+    display: grid;
+    gap: 1rem;
+    max-width: 420px;
+}
+
 .site-nav {
   display: flex;
   align-items: center;
@@ -1159,6 +1194,37 @@ tbody tr:hover {
   margin-left: auto;
 }
 
+.public-link-panel {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.8fr) minmax(320px, 1.2fr);
+  gap: 1rem;
+  align-items: end;
+  margin: 1.25rem 0;
+  padding: 1.25rem;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: linear-gradient(180deg, var(--surface-2), var(--surface));
+}
+
+.public-link-panel h2 {
+  margin: 0;
+}
+
+.public-link-copy {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.75rem;
+}
+
+.public-link-copy input {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #0f1115;
+  color: var(--text);
+  padding: 0.85rem 1rem;
+}
+
 .pagination-controls {
   display: flex;
   justify-content: space-between;
@@ -1626,6 +1692,61 @@ body.public-page .btn-secondary {
   color: #1f4f8b;
 }
 
+body.public-page .form-section {
+  padding: 2rem 0 4rem;
+}
+
+body.public-page .form-wrapper {
+  width: min(100%, 760px);
+  margin: 0 auto;
+  background: #fff;
+  border: 1px solid #dce5f2;
+  border-radius: 8px;
+  box-shadow: 0 18px 48px rgba(37, 63, 112, 0.12);
+}
+
+body.public-page .form-wrapper h2 {
+  color: #101828;
+}
+
+body.public-page .form-wrapper p {
+  color: #526173;
+}
+
+body.public-page .field-group label {
+  color: #172033;
+}
+
+body.public-page .field-group input,
+body.public-page .field-group select,
+body.public-page .field-group textarea {
+  background: #fff;
+  border-color: #b8c7dc;
+  color: #101828;
+}
+
+body.public-page .field-group input::placeholder,
+body.public-page .field-group textarea::placeholder {
+  color: #718096;
+}
+
+body.public-page .field-group input[type="file"] {
+  background: #f8fbff;
+  color: #172033;
+}
+
+body.public-page .field-group input:focus,
+body.public-page .field-group select:focus,
+body.public-page .field-group textarea:focus {
+  border-color: #1f6fff;
+  box-shadow: 0 0 0 3px rgba(31, 111, 255, 0.14);
+}
+
+body.public-page .field-group .errorlist,
+body.public-page .field-error-message {
+  color: #b42318;
+}
+
 .public-hero {
   display: grid;
   grid-template-columns: minmax(0, 1.05fr) minmax(360px, 0.95fr);
@@ -2039,5 +2160,214 @@ body.public-page .footer-nav a:hover {
 
   .mockup-summary {
     grid-template-columns: 1fr;
+  }
+}
+
+/* Cadastro publico: tema dedicado com contraste forte */
+body.public-page .signup-section {
+  padding: 2.25rem 0 4rem !important;
+}
+
+body.public-page .signup-wrapper {
+  width: min(100%, 880px) !important;
+  margin: 0 auto !important;
+  padding: 2.5rem !important;
+  border-radius: 16px !important;
+  border: 1px solid rgba(31, 111, 255, 0.28) !important;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(242, 247, 255, 0.98)) !important;
+  box-shadow: 0 24px 60px rgba(31, 79, 139, 0.18) !important;
+  color: #101828 !important;
+}
+
+body.public-page .signup-wrapper h2 {
+  margin: 0 0 0.55rem !important;
+  color: #0b1b34 !important;
+  font-size: clamp(1.7rem, 3vw, 2.25rem) !important;
+  font-weight: 900 !important;
+}
+
+body.public-page .signup-wrapper > p {
+  margin: 0 0 1.6rem !important;
+  color: #34425e !important;
+  font-size: 1rem !important;
+}
+
+body.public-page .signup-wrapper .field-group {
+  gap: 0.45rem !important;
+  margin-bottom: 1.15rem !important;
+}
+
+body.public-page .signup-wrapper .field-group label {
+  color: #10223d !important;
+  font-size: 0.95rem !important;
+  font-weight: 850 !important;
+}
+
+body.public-page .signup-wrapper .field-group input,
+body.public-page .signup-wrapper .field-group select,
+body.public-page .signup-wrapper .field-group textarea {
+  min-height: 54px !important;
+  border: 1px solid #9db3d3 !important;
+  border-radius: 10px !important;
+  background: #ffffff !important;
+  color: #101828 !important;
+  box-shadow: inset 0 1px 0 rgba(16, 24, 40, 0.04) !important;
+}
+
+body.public-page .signup-wrapper .field-group input::placeholder,
+body.public-page .signup-wrapper .field-group textarea::placeholder {
+  color: #66758d !important;
+}
+
+body.public-page .signup-wrapper .field-group input[type="file"] {
+  padding: 0.85rem 1rem !important;
+  background: #edf4ff !important;
+  color: #172033 !important;
+  border-color: #8fb6ff !important;
+}
+
+body.public-page .signup-wrapper .field-group input:focus,
+body.public-page .signup-wrapper .field-group select:focus,
+body.public-page .signup-wrapper .field-group textarea:focus {
+  outline: none !important;
+  border-color: #1f6fff !important;
+  box-shadow: 0 0 0 4px rgba(31, 111, 255, 0.16) !important;
+}
+
+body.public-page .signup-wrapper .btn-primary {
+  width: 100% !important;
+  margin-top: 0.5rem !important;
+  background: linear-gradient(135deg, #1f6fff, #0f8bdc) !important;
+  color: #fff !important;
+  box-shadow: 0 16px 30px rgba(31, 111, 255, 0.32) !important;
+}
+
+body.public-page .signup-wrapper .errorlist {
+  margin: 0.35rem 0 0 !important;
+  padding-left: 1.1rem !important;
+  color: #b42318 !important;
+}
+
+.public-booking-page {
+  background: #f4f7fb;
+  color: #172033;
+}
+
+.public-booking-shell {
+  width: min(1120px, calc(100% - 2rem));
+  margin: 0 auto;
+  padding: 2rem 0 4rem;
+}
+
+.public-booking-brand {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+  padding: 1.25rem;
+  border: 1px solid #dce5f2;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 14px 36px rgba(37, 63, 112, 0.09);
+}
+
+.public-booking-brand img,
+.public-booking-brand .brand-mark {
+  width: 64px;
+  height: 64px;
+  flex: 0 0 auto;
+  border-radius: 14px;
+  object-fit: cover;
+}
+
+.public-booking-brand h1 {
+  margin: 0.15rem 0;
+  color: #101828;
+}
+
+.public-booking-brand p {
+  margin: 0;
+  color: #5d6b82;
+}
+
+.public-booking-grid {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.75fr) minmax(0, 1.25fr);
+  gap: 1.25rem;
+  align-items: start;
+}
+
+.public-booking-services,
+.public-booking-form .form-wrapper {
+  border: 1px solid #dce5f2;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 16px 40px rgba(37, 63, 112, 0.1);
+}
+
+.public-booking-services {
+  padding: 1.5rem;
+}
+
+.public-booking-services h2,
+.public-booking-form h2 {
+  margin-top: 0;
+  color: #101828;
+}
+
+.public-booking-page .service-list li {
+  border-color: #dce5f2;
+  background: #f7faff;
+  color: #172033;
+}
+
+.public-booking-page .slot-info {
+  background: #edf4ff;
+  border-color: #b8cff5;
+  color: #1f4f8b;
+}
+
+.public-booking-success {
+  display: grid;
+  justify-content: center;
+}
+
+.public-booking-success .panel-card {
+  width: min(100%, 720px);
+  padding: 2rem;
+  border: 1px solid #dce5f2;
+  border-radius: 16px;
+  background: #fff;
+  color: #172033;
+  text-align: center;
+  box-shadow: 0 16px 40px rgba(37, 63, 112, 0.1);
+}
+
+.public-booking-success h1 {
+  margin-top: 0;
+  color: #101828;
+}
+
+.public-booking-success p {
+  color: #5d6b82;
+}
+
+.invoice-logo {
+  width: 72px;
+  height: 72px;
+  border-radius: 12px;
+  object-fit: cover;
+  margin-bottom: 0.75rem;
+}
+
+@media (max-width: 780px) {
+  .public-link-panel,
+  .public-link-copy,
+  .public-booking-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .public-link-copy .btn {
+    width: 100%;
   }
 }

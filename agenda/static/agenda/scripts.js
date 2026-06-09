@@ -5,6 +5,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const durationSelect = document.getElementById('id_duration_minutes');
     const startTimeSelect = document.getElementById('id_start_time');
     const slotMessage = document.getElementById('slotMessage');
+    const bookingShell = document.querySelector('[data-booking-oficina-slug]');
 
     const defaultDuration = {
         oil: '30',
@@ -37,6 +38,9 @@ document.addEventListener('DOMContentLoaded', function () {
         });
         if (oficinaSelect && oficinaSelect.value) {
             params.set('oficina', oficinaSelect.value);
+        }
+        if (bookingShell && bookingShell.dataset.bookingOficinaSlug) {
+            params.set('oficina_slug', bookingShell.dataset.bookingOficinaSlug);
         }
 
         fetch(`/agendar/available-slots/?${params.toString()}`)
@@ -95,4 +99,21 @@ document.addEventListener('DOMContentLoaded', function () {
 
     setDefaultDuration();
     updateStartTimes();
+
+    document.querySelectorAll('[data-copy-target]').forEach((button) => {
+        button.addEventListener('click', function () {
+            const target = document.querySelector(button.dataset.copyTarget);
+            if (!target) {
+                return;
+            }
+            const value = target.value || target.textContent;
+            navigator.clipboard.writeText(value).then(() => {
+                const originalText = button.textContent;
+                button.textContent = 'Link copiado';
+                window.setTimeout(() => {
+                    button.textContent = originalText;
+                }, 1800);
+            });
+        });
+    });
 });

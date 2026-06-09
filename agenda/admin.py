@@ -25,20 +25,23 @@ class AssinaturaInline(admin.StackedInline):
         'last_payment_at',
         'payment_method',
         'monthly_amount',
+        'asaas_customer_id',
+        'asaas_payment_id',
+        'asaas_invoice_url',
     )
 
 
 @admin.register(Oficina)
 class OficinaAdmin(admin.ModelAdmin):
-    list_display = ('nome', 'dono', 'created_at')
-    search_fields = ('nome', 'dono__username', 'dono__email')
+    list_display = ('nome', 'email', 'telefone', 'dono', 'created_at')
+    search_fields = ('nome', 'email', 'telefone', 'documento', 'dono__username', 'dono__email')
     readonly_fields = ('created_at',)
     inlines = [AssinaturaInline]
 
 
 @admin.register(Assinatura)
 class AssinaturaAdmin(admin.ModelAdmin):
-    list_display = ('oficina', 'status', 'due_date', 'last_payment_at', 'payment_method', 'monthly_amount')
+    list_display = ('oficina', 'status', 'due_date', 'last_payment_at', 'payment_method', 'monthly_amount', 'asaas_payment_id')
     list_filter = ('status', 'payment_method', 'due_date')
     search_fields = ('oficina__nome', 'oficina__dono__username', 'oficina__dono__email')
     actions = ['marcar_como_pago']

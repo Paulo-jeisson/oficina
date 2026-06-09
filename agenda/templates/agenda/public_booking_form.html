@@ -1,0 +1,63 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agendar servico | {{ oficina.nome }}</title>
+    <link rel="stylesheet" href="{% static 'agenda/styles.css' %}?v=20260608-public-booking">
+    <meta name="theme-color" content="#f4f7fb">
+</head>
+<body class="public-page public-booking-page">
+    <main class="public-booking-shell" data-booking-oficina-slug="{{ public_booking_slug }}">
+        <section class="public-booking-brand">
+            {% if oficina.logo %}
+                <img src="{{ oficina.logo.url }}" alt="{{ oficina.nome }}">
+            {% else %}
+                <span class="brand-mark">OO</span>
+            {% endif %}
+            <div>
+                <p class="public-eyebrow">Agendamento online</p>
+                <h1>{{ oficina.nome }}</h1>
+                {% if oficina.telefone %}
+                    <p>{{ oficina.telefone }}</p>
+                {% endif %}
+            </div>
+        </section>
+
+        <section class="public-booking-grid">
+            <aside class="public-booking-services">
+                <h2>Servicos disponiveis</h2>
+                <ul class="service-list">
+                    {% for label, value in service_durations.items %}
+                    <li><strong>{{ label }}</strong> <span>{{ value }}</span></li>
+                    {% endfor %}
+                </ul>
+            </aside>
+
+            <section class="form-section public-booking-form">
+                <div class="form-wrapper">
+                    <h2>Confirmar agendamento</h2>
+                    <p>Escolha o servico, a data e um horario disponivel.</p>
+                    <form method="post" novalidate>
+                        {% csrf_token %}
+                        {% for field in form.visible_fields %}
+                            <div class="field-group{% if field.errors %} field-error{% endif %}">
+                                <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+                                {{ field }}
+                                {% if field.help_text %}<small>{{ field.help_text }}</small>{% endif %}
+                                {% for error in field.errors %}
+                                    <span class="field-error-message">{{ error }}</span>
+                                {% endfor %}
+                            </div>
+                        {% endfor %}
+                        <div class="slot-info" id="slotMessage">Selecione data e duracao para ver os horarios disponiveis.</div>
+                        <button class="btn btn-primary" type="submit">Confirmar agendamento</button>
+                    </form>
+                </div>
+            </section>
+        </section>
+    </main>
+    <script src="{% static 'agenda/scripts.js' %}?v=20260608-public-booking" defer></script>
+</body>
+</html>

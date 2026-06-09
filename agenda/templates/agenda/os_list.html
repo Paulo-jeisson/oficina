@@ -94,6 +94,20 @@
                 </table>
             </div>
         </div>
+        <div class="pagination-controls">
+            <div class="pagination-info">
+                Pagina <strong>{{ orders.number }}</strong> de <strong>{{ orders_paginator.num_pages }}</strong>
+                ({{ total_orders }} ordens)
+            </div>
+            <div class="pagination-buttons">
+                {% if orders.has_previous %}
+                    <a class="btn btn-secondary" href="?page={{ orders.previous_page_number }}{% if filter_querystring %}&{{ filter_querystring }}{% endif %}">Anterior</a>
+                {% endif %}
+                {% if orders.has_next %}
+                    <a class="btn btn-secondary" href="?page={{ orders.next_page_number }}{% if filter_querystring %}&{{ filter_querystring }}{% endif %}">Proximo</a>
+                {% endif %}
+            </div>
+        </div>
     </section>
 </section>
 {% endblock %}

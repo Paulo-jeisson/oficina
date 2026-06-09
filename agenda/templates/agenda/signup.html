@@ -1,0 +1,70 @@
+{% extends 'agenda/base.html' %}
+{% block body_class %}public-page{% endblock %}
+{% block content %}
+<section class="form-section signup-section">
+    <div class="form-wrapper signup-wrapper">
+        <h2>Comecar teste gratis</h2>
+        <p>Cadastre sua oficina para usar o sistema por 3 dias gratis.</p>
+        <form method="post" enctype="multipart/form-data" novalidate>
+            {% csrf_token %}
+            {% if form.non_field_errors %}
+                <div class="field-error-message">{{ form.non_field_errors }}</div>
+            {% endif %}
+
+            <div class="field-group">
+                <label for="{{ form.oficina_nome.id_for_label }}">Nome da oficina</label>
+                {{ form.oficina_nome }}
+                {{ form.oficina_nome.errors }}
+            </div>
+            <div class="field-group">
+                <label for="{{ form.logo.id_for_label }}">Logo da oficina</label>
+                {{ form.logo }}
+                {{ form.logo.errors }}
+            </div>
+            <div class="field-group">
+                <label for="{{ form.documento.id_for_label }}">CPF/CNPJ</label>
+                {{ form.documento }}
+                {{ form.documento.errors }}
+            </div>
+            <div class="field-group">
+                <label for="{{ form.email.id_for_label }}">E-mail</label>
+                {{ form.email }}
+                {{ form.email.errors }}
+            </div>
+            <div class="field-group">
+                <label for="{{ form.telefone.id_for_label }}">Telefone/WhatsApp</label>
+                {{ form.telefone }}
+                {{ form.telefone.errors }}
+            </div>
+            <div class="field-group">
+                <label for="{{ form.endereco.id_for_label }}">Endereco</label>
+                {{ form.endereco }}
+            </div>
+            <div class="field-group">
+                <label for="{{ form.cidade.id_for_label }}">Cidade</label>
+                {{ form.cidade }}
+            </div>
+            <div class="field-group">
+                <label for="{{ form.estado.id_for_label }}">Estado</label>
+                {{ form.estado }}
+            </div>
+            <div class="field-group">
+                <label for="{{ form.username.id_for_label }}">Usuario de acesso</label>
+                {{ form.username }}
+                {{ form.username.errors }}
+            </div>
+            <div class="field-group">
+                <label for="{{ form.password1.id_for_label }}">Senha</label>
+                {{ form.password1 }}
+                {{ form.password1.errors }}
+            </div>
+            <div class="field-group">
+                <label for="{{ form.password2.id_for_label }}">Confirmar senha</label>
+                {{ form.password2 }}
+                {{ form.password2.errors }}
+            </div>
+            <button class="btn btn-primary" type="submit">Criar oficina</button>
+        </form>
+    </div>
+</section>
+{% endblock %}

@@ -1,5 +1,7 @@
 from datetime import date, datetime
 from django import forms
+from django.contrib.auth.forms import UserCreationForm
+from django.contrib.auth.models import User
 from django.utils.translation import gettext_lazy as _
 from .models import (
     Booking,
@@ -8,10 +10,61 @@ from .models import (
     DURATION_CHOICES,
     BUSINESS_START,
     BUSINESS_END,
+    BUSINESS_MINUTES,
     OrdemServicoServiceItem,
     OrdemServicoPartItem,
     OrdemServico,
 )
+
+
+class OficinaSignupForm(UserCreationForm):
+    oficina_nome = forms.CharField(
+        label='Nome da oficina',
+        max_length=120,
+        widget=forms.TextInput(attrs={'placeholder': 'Nome da sua oficina'})
+    )
+    logo = forms.ImageField(label='Logo da oficina', required=False)
+    documento = forms.CharField(label='CPF/CNPJ', max_length=20, required=False)
+    email = forms.EmailField(label='E-mail', required=True)
+    telefone = forms.CharField(label='Telefone/WhatsApp', max_length=25, required=True)
+    endereco = forms.CharField(label='Endereco', max_length=180, required=False)
+    cidade = forms.CharField(label='Cidade', max_length=80, required=False)
+    estado = forms.CharField(label='Estado', max_length=2, required=False)
+
+    class Meta(UserCreationForm.Meta):
+        model = User
+        fields = ('username', 'email', 'password1', 'password2')
+
+    def save(self, commit=True):
+        user = super().save(commit=False)
+        user.email = self.cleaned_data['email']
+        user.is_staff = True
+        if commit:
+            user.save()
+            oficina = Oficina.objects.create(
+                dono=user,
+                nome=self.cleaned_data['oficina_nome'],
+                logo=self.cleaned_data.get('logo'),
+                documento=self.cleaned_data.get('documento', ''),
+                email=self.cleaned_data.get('email', ''),
+                telefone=self.cleaned_data.get('telefone', ''),
+                endereco=self.cleaned_data.get('endereco', ''),
+                cidade=self.cleaned_data.get('cidade', ''),
+                estado=self.cleaned_data.get('estado', '').upper(),
+            )
+            oficina.ensure_assinatura()
+        return user
+
+
+class AssinaturaPaymentForm(forms.Form):
+    payment_method = forms.ChoiceField(
+        label='Forma de pagamento',
+        choices=(
+            ('PIX', 'Pix'),
+            ('CREDIT_CARD', 'Cartao de credito'),
+        ),
+        widget=forms.Select(attrs={'class': 'form-input'})
+    )
 
 
 class BookingForm(forms.ModelForm):
@@ -148,11 +201,11 @@ class BookingForm(forms.ModelForm):
                 return cleaned
 
         if scheduled_date and duration_minutes and start_time and selected_oficina:
-            if Booking.booked_minutes_for_date(scheduled_date, oficina=selected_oficina) + duration_minutes > 480:
-                self.add_error('scheduled_date', _('O limite de 8 horas para este dia foi atingido. Escolha outra data.'))
+            if Booking.booked_minutes_for_date(scheduled_date, oficina=selected_oficina) + duration_minutes > BUSINESS_MINUTES:
+                self.add_error('scheduled_date', _('O limite de 10 horas para este dia foi atingido. Escolha outra data.'))
 
             if cleaned['start_time'] < BUSINESS_START:
-                self.add_error('start_time', _('O horário deve começar a partir de 08:00.'))
+                self.add_error('start_time', _('O horário deve começar a partir de 07:00.'))
 
             end_minutes = Booking._time_to_minutes(cleaned['start_time']) + duration_minutes
             if end_minutes > Booking._time_to_minutes(BUSINESS_END):

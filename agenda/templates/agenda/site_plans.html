@@ -21,7 +21,25 @@
             <li>Agenda e financeiro integrados no mesmo painel.</li>
             <li>Pagamento por Pix e cartão de crédito.</li>
         </ul>
-        <a class="btn btn-primary" href="{% url 'agenda:contact' %}">Testar agora grátis</a>
+        {% if request.user.is_authenticated %}
+            {% if request.oficina %}
+                <form method="post" action="{% url 'agenda:subscription_pay' %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="payment_method" value="PIX">
+                    <button class="btn btn-primary" type="submit">Gerar cobranca Pix da assinatura</button>
+                </form>
+                {% with assinatura=request.oficina.assinatura_atual %}
+                    {% if assinatura.asaas_invoice_url %}
+                        <a class="btn btn-secondary" href="{{ assinatura.asaas_invoice_url }}">Abrir ultima cobranca</a>
+                    {% endif %}
+                {% endwith %}
+            {% else %}
+                <p class="plan-alert">Voce esta logado, mas nao ha oficina vinculada ao seu usuario.</p>
+                <p>Cadastre ou vincule uma oficina ao seu usuario para gerar a cobranca da assinatura.</p>
+            {% endif %}
+        {% else %}
+            <a class="btn btn-primary" href="{% url 'agenda:login' %}">Entrar para pagar assinatura</a>
+        {% endif %}
     </article>
 </section>
 {% endblock %}

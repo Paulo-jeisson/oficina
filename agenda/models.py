@@ -4,6 +4,7 @@ from django.utils import timezone
 from django.conf import settings
 from django.db import models
 from django.urls import reverse
+from django.utils.text import slugify
 
 
 class ServiceType(models.TextChoices):
@@ -67,14 +68,22 @@ TRANSACTION_STATUS_CHOICES = [
     ('overdue', 'Vencido'),
 ]
 
-BUSINESS_START = time(8, 0)
+BUSINESS_START = time(7, 0)
 BUSINESS_END = time(17, 0)
-BUSINESS_MINUTES = 480
+BUSINESS_MINUTES = 600
 SLOT_STEP = 30
 
 
 class Oficina(models.Model):
     nome = models.CharField('Nome da oficina', max_length=120)
+    slug = models.SlugField('Slug publico', max_length=140, unique=True, blank=True, null=True)
+    logo = models.ImageField('Logo da oficina', upload_to='oficinas/logos/', blank=True, null=True)
+    documento = models.CharField('CPF/CNPJ', max_length=20, blank=True)
+    email = models.EmailField('E-mail comercial', blank=True)
+    telefone = models.CharField('Telefone/WhatsApp', max_length=25, blank=True)
+    endereco = models.CharField('Endereco', max_length=180, blank=True)
+    cidade = models.CharField('Cidade', max_length=80, blank=True)
+    estado = models.CharField('Estado', max_length=2, blank=True)
     dono = models.OneToOneField(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
@@ -90,9 +99,32 @@ class Oficina(models.Model):
     def __str__(self):
         return self.nome
 
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            self.slug = self._generate_unique_slug()
+        super().save(*args, **kwargs)
+
+    def _generate_unique_slug(self):
+        base_slug = slugify(self.nome) or f'oficina-{self.pk or "nova"}'
+        slug = base_slug
+        counter = 2
+        queryset = Oficina.objects.filter(slug=slug)
+        if self.pk:
+            queryset = queryset.exclude(pk=self.pk)
+        while queryset.exists():
+            slug = f'{base_slug}-{counter}'
+            counter += 1
+            queryset = Oficina.objects.filter(slug=slug)
+            if self.pk:
+                queryset = queryset.exclude(pk=self.pk)
+        return slug
+
     def ensure_assinatura(self):
         assinatura, _ = Assinatura.objects.get_or_create(oficina=self)
         return assinatura
+
+    def get_public_booking_url(self):
+        return reverse('agenda:public_booking', kwargs={'slug': self.slug})
 
     @property
     def assinatura_atual(self):
@@ -154,6 +186,10 @@ class Assinatura(models.Model):
         decimal_places=2,
         default=VALOR_MENSAL_PADRAO,
     )
+    asaas_customer_id = models.CharField('ID do cliente no Asaas', max_length=80, blank=True)
+    asaas_payment_id = models.CharField('ID da cobranca no Asaas', max_length=80, blank=True)
+    asaas_invoice_url = models.URLField('Link de pagamento Asaas', blank=True)
+    asaas_pix_payload = models.TextField('Copia e cola Pix', blank=True)
     created_at = models.DateTimeField('Criada em', auto_now_add=True)
     updated_at = models.DateTimeField('Atualizada em', auto_now=True)
 

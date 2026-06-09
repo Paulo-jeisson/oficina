@@ -2,11 +2,34 @@
 {% block content %}
 <section class="blocked-panel">
     <p class="eyebrow">Assinatura</p>
-    <h1>Sua assinatura está bloqueada.</h1>
-    <p>Sua assinatura está bloqueada. Regularize o pagamento para continuar usando o sistema.</p>
-    <div class="hero-actions">
-        <a class="btn btn-primary" href="{% url 'agenda:contact' %}">Regularizar pagamento</a>
+    <h1>Sua assinatura esta bloqueada.</h1>
+    <p>Regularize o pagamento para continuar usando o sistema da {{ request.oficina.nome }}.</p>
+    {% if assinatura %}
+        <p>Valor mensal: R$ {{ assinatura.monthly_amount }}. Vencimento atual: {{ assinatura.due_date|date:'d/m/Y' }}.</p>
+    {% endif %}
+    <form method="post" action="{% url 'agenda:subscription_pay' %}" class="payment-form">
+        {% csrf_token %}
+        <div class="field-group">
+            <label for="{{ payment_form.payment_method.id_for_label }}">Forma de pagamento</label>
+            {{ payment_form.payment_method }}
+        </div>
+        <button class="btn btn-primary" type="submit">Gerar pagamento Asaas</button>
         <a class="btn btn-secondary" href="{% url 'agenda:logout' %}">Sair</a>
+    </form>
+    <div class="payment-actions">
+        <form method="post" action="{% url 'agenda:subscription_pay' %}">
+            {% csrf_token %}
+            <input type="hidden" name="payment_method" value="PIX">
+            <button class="btn btn-primary" type="submit">Pagar assinatura com Pix</button>
+        </form>
+        <form method="post" action="{% url 'agenda:subscription_pay' %}">
+            {% csrf_token %}
+            <input type="hidden" name="payment_method" value="CREDIT_CARD">
+            <button class="btn btn-secondary" type="submit">Pagar com cartao</button>
+        </form>
     </div>
+    {% if assinatura.asaas_invoice_url %}
+        <p><a href="{{ assinatura.asaas_invoice_url }}">Abrir ultima cobranca gerada</a></p>
+    {% endif %}
 </section>
 {% endblock %}

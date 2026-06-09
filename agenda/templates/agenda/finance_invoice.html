@@ -3,40 +3,46 @@
 <section class="invoice-panel">
     <div class="dashboard-head">
         <div>
-            <p class="eyebrow">Cupom de Serviço</p>
+            <p class="eyebrow">Recibo da Ordem de Servico</p>
             <h1>{{ ordem.order_number }}</h1>
         </div>
         <div class="panel-actions">
-            <a class="btn btn-primary" href="javascript:window.print()">Imprimir cupom</a>
+            <a class="btn btn-primary" href="javascript:window.print()">Imprimir recibo</a>
             <a class="btn btn-secondary" href="{% url 'agenda:finance_export_pdf' ordem.pk %}">Baixar PDF</a>
         </div>
     </div>
 
     <div class="table-card">
         <div class="invoice-header">
-            <div>
-                <h2>Oficina PRO</h2>
-                <p>Endereço: Rua Exemplo, 123 - Cidade</p>
-                <p>Telefone: (11) 99999-9999</p>
-                <p>WhatsApp: (11) 98888-8888</p>
+            <div class="invoice-office">
+                {% if oficina.logo %}
+                    <img class="invoice-logo" src="{{ oficina.logo.url }}" alt="{{ oficina.nome }}">
+                {% endif %}
+                <h2>{{ oficina.nome|default:'-' }}</h2>
+                {% if oficina.documento %}<p><strong>CPF/CNPJ:</strong> {{ oficina.documento }}</p>{% endif %}
+                {% if oficina.endereco %}<p><strong>Endereco:</strong> {{ oficina.endereco }}</p>{% endif %}
+                {% if oficina.cidade or oficina.estado %}<p><strong>Cidade/UF:</strong> {{ oficina.cidade|default:'-' }}{% if oficina.estado %}/{{ oficina.estado }}{% endif %}</p>{% endif %}
+                {% if oficina.telefone %}<p><strong>Telefone/WhatsApp:</strong> {{ oficina.telefone }}</p>{% endif %}
+                {% if oficina.email %}<p><strong>E-mail:</strong> {{ oficina.email }}</p>{% endif %}
             </div>
             <div>
-                <p><strong>Data/Hora:</strong> {{ ordem.completed_at|date:'d/m/Y H:i' }}</p>
-                <p><strong>Cliente:</strong> {{ ordem.client_name }}</p>
-                <p><strong>Veículo:</strong> {{ ordem.vehicle_brand }} {{ ordem.vehicle_model }}</p>
+                <p><strong>OS:</strong> {{ ordem.order_number }}</p>
+                <p><strong>Data/Hora:</strong> {% if ordem.completed_at %}{{ ordem.completed_at|date:'d/m/Y H:i' }}{% else %}{{ ordem.created_at|date:'d/m/Y H:i' }}{% endif %}</p>
+                <p><strong>Cliente:</strong> {{ ordem.client_name|default:'-' }}</p>
+                <p><strong>Veiculo:</strong> {{ ordem.vehicle_brand }} {{ ordem.vehicle_model }}{% if ordem.vehicle_year %} ({{ ordem.vehicle_year }}){% endif %}</p>
                 <p><strong>Placa:</strong> {{ ordem.plate|default:'-' }}</p>
                 <p><strong>Quilometragem:</strong> {{ ordem.mileage|default:'-' }}</p>
             </div>
         </div>
 
         <div class="invoice-section">
-            <h3>Serviços executados</h3>
+            <h3>Servicos executados</h3>
             <table>
                 <thead>
                     <tr>
-                        <th>Serviço</th>
+                        <th>Servico</th>
                         <th>Qtd</th>
-                        <th>Unitário</th>
+                        <th>Unitario</th>
                         <th>Total</th>
                     </tr>
                 </thead>
@@ -50,7 +56,7 @@
                     </tr>
                     {% empty %}
                     <tr>
-                        <td colspan="4">Nenhum serviço registrado.</td>
+                        <td colspan="4">Nenhum servico registrado.</td>
                     </tr>
                     {% endfor %}
                 </tbody>
@@ -58,13 +64,13 @@
         </div>
 
         <div class="invoice-section">
-            <h3>Peças utilizadas</h3>
+            <h3>Pecas utilizadas</h3>
             <table>
                 <thead>
                     <tr>
-                        <th>Peça</th>
+                        <th>Peca</th>
                         <th>Qtd</th>
-                        <th>Unitário</th>
+                        <th>Unitario</th>
                         <th>Total</th>
                     </tr>
                 </thead>
@@ -78,7 +84,7 @@
                     </tr>
                     {% empty %}
                     <tr>
-                        <td colspan="4">Nenhuma peça utilizada.</td>
+                        <td colspan="4">Nenhuma peca registrada.</td>
                     </tr>
                     {% endfor %}
                 </tbody>
@@ -88,19 +94,22 @@
         <div class="invoice-summary">
             <div>
                 <p><strong>Forma de pagamento:</strong> {{ ordem.get_payment_method_display|default:'-' }}</p>
-                <p><strong>Mecânico responsável:</strong> {{ ordem.mechanic_name|default:'-' }}</p>
-                <p><strong>Garantia:</strong> {{ ordem.warranty }}</p>
+                <p><strong>Mecanico responsavel:</strong> {{ ordem.mechanic_name|default:'-' }}</p>
+                <p><strong>Garantia:</strong> {{ ordem.warranty|default:'-' }}</p>
             </div>
             <div>
-                <p><strong>Serviços:</strong> R$ {{ ordem.service_value|floatformat:2 }}</p>
-                <p><strong>Peças:</strong> R$ {{ ordem.parts_value|floatformat:2 }}</p>
-                <p><strong>Total:</strong> R$ {{ ordem.total_value|floatformat:2 }}</p>
+                <p><strong>Subtotal de servicos:</strong> R$ {{ service_subtotal|floatformat:2 }}</p>
+                <p><strong>Subtotal de pecas:</strong> R$ {{ parts_subtotal|floatformat:2 }}</p>
+                {% if discount %}
+                    <p><strong>Desconto:</strong> R$ {{ discount|floatformat:2 }}</p>
+                {% endif %}
+                <p><strong>Total geral:</strong> R$ {{ invoice_total|floatformat:2 }}</p>
             </div>
         </div>
 
         <div class="invoice-notes">
-            <h3>Observações</h3>
-            <p>{{ ordem.observations|default:'Nenhuma observação.' }}</p>
+            <h3>Observacoes</h3>
+            <p>{{ ordem.observations|default:'-' }}</p>
         </div>
     </div>
 </section>

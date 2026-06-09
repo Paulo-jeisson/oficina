@@ -7,9 +7,20 @@
             <h1>Visão geral dos agendamentos</h1>
         </div>
         <div class="panel-actions">
-            <a class="btn btn-primary" href="{% url 'agenda:booking' %}">Voltar para agendamento</a>
+            <a class="btn btn-primary" href="{{ public_booking_url }}" target="_blank" rel="noopener">Abrir link publico</a>
         </div>
     </div>
+
+    <section class="public-link-panel">
+        <div>
+            <p class="eyebrow">Link publico de agendamento</p>
+            <h2>Envie este link para seus clientes</h2>
+        </div>
+        <div class="public-link-copy">
+            <input id="publicBookingUrl" type="text" value="{{ public_booking_url }}" readonly>
+            <button class="btn btn-primary" type="button" data-copy-target="#publicBookingUrl">Copiar link de agendamento</button>
+        </div>
+    </section>
 
     <div class="summary-grid">
         <article class="summary-card">
@@ -148,13 +159,11 @@
             </div>
             <div class="pagination-buttons">
                 {% if bookings.has_previous %}
-                    <a class="btn btn-secondary" href="?page=1{% if query %}&q={{ query }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}{% if date_filter %}&date={{ date_filter }}{% endif %}">Primeira</a>
-                    <a class="btn btn-secondary" href="?page={{ bookings.previous_page_number }}{% if query %}&q={{ query }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}{% if date_filter %}&date={{ date_filter }}{% endif %}">Anterior</a>
+                    <a class="btn btn-secondary" href="?page={{ bookings.previous_page_number }}{% if filter_querystring %}&{{ filter_querystring }}{% endif %}">Anterior</a>
                 {% endif %}
                 
                 {% if bookings.has_next %}
-                    <a class="btn btn-secondary" href="?page={{ bookings.next_page_number }}{% if query %}&q={{ query }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}{% if date_filter %}&date={{ date_filter }}{% endif %}">Próximo</a>
-                    <a class="btn btn-secondary" href="?page={{ paginator.num_pages }}{% if query %}&q={{ query }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}{% if date_filter %}&date={{ date_filter }}{% endif %}">Última</a>
+                    <a class="btn btn-secondary" href="?page={{ bookings.next_page_number }}{% if filter_querystring %}&{{ filter_querystring }}{% endif %}">Proximo</a>
                 {% endif %}
             </div>
         </div>

@@ -5,19 +5,23 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Oficina Online | Sistema SaaS para oficinas</title>
-    <link rel="stylesheet" href="{% static 'agenda/styles.css' %}">
+    <link rel="stylesheet" href="{% static 'agenda/styles.css' %}?v=20260608-contrast2">
     <meta name="theme-color" content="#0b0d12">
 </head>
 <body class="{% block body_class %}{% endblock %}">
     <header class="site-header">
         <div class="container header-inner">
-            <a class="brand" href="{% url 'agenda:home' %}">
-                <span class="brand-mark">OO</span>
-                <span>Oficina Online</span>
+            <a class="brand" href="{% if user.is_authenticated %}{% url 'agenda:dashboard' %}{% else %}{% url 'agenda:home' %}{% endif %}">
+                {% if user.is_authenticated and request.oficina.logo %}
+                    <img class="brand-logo" src="{{ request.oficina.logo.url }}" alt="{{ request.oficina.nome }}">
+                {% else %}
+                    <span class="brand-mark">OO</span>
+                {% endif %}
+                <span>{% if user.is_authenticated and request.oficina %}{{ request.oficina.nome }}{% else %}Oficina Online{% endif %}</span>
             </a>
             <nav class="site-nav">
-                {% if request.user.is_authenticated %}
-                    <a href="{% url 'agenda:booking' %}">Agendar serviço</a>
+                {% if user.is_authenticated %}
+                    <a href="{% url 'agenda:public_booking' request.oficina.slug %}">Agendar serviço</a>
                     <a href="{% url 'agenda:dashboard' %}">Painel da oficina</a>
                     <a href="{% url 'agenda:finance_dashboard' %}">Financeiro</a>
                     <a href="{% url 'agenda:os_list' %}">Ordens de Serviço</a>
@@ -26,7 +30,7 @@
                     <a href="{% url 'agenda:home' %}">Início</a>
                     <a href="{% url 'agenda:plans' %}">Planos</a>
                     <a href="{% url 'agenda:contact' %}">Contato</a>
-                    <a class="nav-pill" href="{% url 'agenda:contact' %}">Começar teste grátis</a>
+                    <a class="nav-pill" href="{% url 'agenda:signup' %}">Comecar teste gratis</a>
                     <a class="nav-pill nav-pill-secondary" href="{% url 'agenda:login' %}">Entrar no sistema</a>
                 {% endif %}
             </nav>
@@ -34,6 +38,13 @@
     </header>
 
     <main class="container site-main">
+        {% if messages %}
+            <div class="messages">
+                {% for message in messages %}
+                    <div class="message message-{{ message.tags }}">{{ message }}</div>
+                {% endfor %}
+            </div>
+        {% endif %}
         {% block content %}{% endblock %}
     </main>
 

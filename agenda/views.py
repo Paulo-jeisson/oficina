@@ -1,16 +1,35 @@
+import json
+import logging
+import secrets
 from datetime import date, datetime, timedelta
-from django.contrib.auth import logout
+from decimal import Decimal
+from django.conf import settings
+from django.contrib import messages
+from django.contrib.auth import login, logout
 from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
 from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
 from django.http import JsonResponse, HttpResponse
 from django.shortcuts import get_object_or_404, redirect
+from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
+from django.utils.decorators import method_decorator
 from django.views.generic import FormView, TemplateView, View
-from django.urls import reverse_lazy
+from django.urls import reverse, reverse_lazy
 from django.db.models import Q, Sum, Count, Avg, F, Case, When, Value, DecimalField
-from .forms import BookingForm, OrdemServicoStatusForm, OrdemServicoServiceItemForm, OrdemServicoPartItemForm, OrdemServicoFinancialForm
+from .asaas import AsaasClient, AsaasError
+from .forms import (
+    AssinaturaPaymentForm,
+    BookingForm,
+    OficinaSignupForm,
+    OrdemServicoStatusForm,
+    OrdemServicoServiceItemForm,
+    OrdemServicoPartItemForm,
+    OrdemServicoFinancialForm,
+)
 from .models import (
+    Assinatura,
     Booking,
+    BUSINESS_MINUTES,
     ServiceType,
     OrdemServico,
     OrdemServicoStatusHistory,
@@ -26,6 +45,8 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 import threading
 
+logger = logging.getLogger(__name__)
+
 
 class PublicHomeView(TemplateView):
     template_name = 'agenda/site_home.html'
@@ -39,9 +60,272 @@ class PublicContactView(TemplateView):
     template_name = 'agenda/site_contact.html'
 
 
+class OficinaSignupView(FormView):
+    template_name = 'agenda/signup.html'
+    form_class = OficinaSignupForm
+    success_url = reverse_lazy('agenda:dashboard')
+
+    def form_valid(self, form):
+        user = form.save()
+        login(self.request, user)
+        messages.success(self.request, 'Cadastro criado. Seu teste gratis de 3 dias ja comecou.')
+        return super().form_valid(form)
+
+
 class SubscriptionBlockedView(LoginRequiredMixin, TemplateView):
     template_name = 'agenda/subscription_blocked.html'
     login_url = reverse_lazy('agenda:login')
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        assinatura = self.request.oficina.ensure_assinatura()
+        assinatura.refresh_status()
+        context['assinatura'] = assinatura
+        context['payment_form'] = AssinaturaPaymentForm()
+        return context
+
+
+class AssinaturaPaymentCreateView(LoginRequiredMixin, View):
+    login_url = reverse_lazy('agenda:login')
+
+    def post(self, request, *args, **kwargs):
+        form = AssinaturaPaymentForm(request.POST)
+        if not form.is_valid():
+            messages.error(request, 'Escolha uma forma de pagamento valida.')
+            return redirect('agenda:subscription_blocked')
+
+        assinatura = request.oficina.ensure_assinatura()
+        try:
+            payment = AsaasClient().create_payment(
+                assinatura,
+                form.cleaned_data['payment_method'],
+                request=request,
+            )
+        except AsaasError as exc:
+            messages.error(request, f'Nao foi possivel gerar a cobranca no Asaas: {exc}')
+            return redirect('agenda:subscription_blocked')
+
+        payment_url = payment.get('invoiceUrl') or assinatura.asaas_invoice_url
+        if payment_url:
+            return redirect(payment_url)
+
+        messages.error(request, 'O Asaas criou a cobranca, mas nao retornou link de pagamento.')
+        return redirect('agenda:subscription_blocked')
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class AsaasWebhookView(View):
+    PAYMENT_PAID_EVENTS = {'PAYMENT_CONFIRMED', 'PAYMENT_RECEIVED'}
+
+    def post(self, request, *args, **kwargs):
+        if not self._is_valid_token(request):
+            logger.warning('Webhook Asaas rejeitado por token invalido.')
+            return JsonResponse({'detail': 'token invalido'}, status=403)
+
+        try:
+            payload = json.loads(request.body.decode('utf-8') or '{}')
+        except json.JSONDecodeError:
+            logger.warning('Webhook Asaas rejeitado por JSON invalido.')
+            return JsonResponse({'detail': 'json invalido'}, status=400)
+
+        event = payload.get('event')
+        payment = payload.get('payment') or {}
+        payment_id = payment.get('id', '')
+        external_reference = payment.get('externalReference', '')
+        logger.info(
+            'Webhook Asaas recebido: event=%s payment_id=%s external_reference=%s status=%s billing_type=%s',
+            event,
+            payment_id,
+            external_reference,
+            payment.get('status', ''),
+            payment.get('billingType', ''),
+        )
+
+        if event not in self.PAYMENT_PAID_EVENTS:
+            logger.info('Webhook Asaas ignorado: event=%s payment_id=%s.', event, payment_id)
+            return JsonResponse({'received': True, 'processed': False})
+
+        assinatura = self._find_assinatura(payment_id, external_reference)
+        if assinatura is None:
+            logger.warning(
+                'Webhook Asaas sem assinatura correspondente: event=%s payment_id=%s external_reference=%s.',
+                event,
+                payment_id,
+                external_reference,
+            )
+            return JsonResponse({'received': True, 'processed': False})
+
+        method = self._payment_method_from_asaas(payment)
+        paid_at = self._payment_date_from_asaas(payment)
+        previous_status = assinatura.status
+        previous_due_date = assinatura.due_date
+        already_processed = bool(
+            payment_id
+            and assinatura.asaas_payment_id == payment_id
+            and assinatura.last_payment_at
+        )
+
+        if already_processed:
+            logger.info(
+                'Webhook Asaas ja processado anteriormente: assinatura_id=%s event=%s payment_id=%s.',
+                assinatura.pk,
+                event,
+                payment_id,
+            )
+            self._register_audit_log(
+                assinatura=assinatura,
+                event=event,
+                payment=payment,
+                previous_status=previous_status,
+                previous_due_date=previous_due_date,
+                action='Webhook Asaas repetido para pagamento ja processado',
+            )
+            return JsonResponse({'received': True, 'processed': False, 'already_processed': True})
+
+        if payment_id and not assinatura.asaas_payment_id:
+            assinatura.asaas_payment_id = payment_id
+            assinatura.save(update_fields=['asaas_payment_id', 'updated_at'])
+
+        assinatura.mark_paid(payment_method=method, paid_at=paid_at)
+        self._register_audit_log(
+            assinatura=assinatura,
+            event=event,
+            payment=payment,
+            previous_status=previous_status,
+            previous_due_date=previous_due_date,
+            action='Webhook Asaas confirmou pagamento de assinatura',
+        )
+
+        logger.info(
+            'Webhook Asaas processado: assinatura_id=%s oficina_id=%s event=%s payment_id=%s status=%s due_date=%s.',
+            assinatura.pk,
+            assinatura.oficina_id,
+            event,
+            payment_id,
+            assinatura.status,
+            assinatura.due_date,
+        )
+
+        return JsonResponse({'received': True, 'processed': True})
+
+    def _is_valid_token(self, request):
+        expected_token = settings.ASAAS_WEBHOOK_TOKEN
+        received_token = request.headers.get('asaas-access-token', '')
+        return bool(expected_token and secrets.compare_digest(expected_token, received_token))
+
+    def _find_assinatura(self, payment_id, external_reference):
+        if payment_id:
+            assinatura = Assinatura.objects.select_related('oficina').filter(asaas_payment_id=payment_id).first()
+            if assinatura:
+                return assinatura
+
+        if external_reference.startswith('assinatura-'):
+            assinatura_id = external_reference.replace('assinatura-', '', 1)
+            return Assinatura.objects.select_related('oficina').filter(pk=assinatura_id).first()
+
+        return None
+
+    def _payment_method_from_asaas(self, payment):
+        if payment.get('billingType') == 'CREDIT_CARD':
+            return Assinatura.FormaPagamento.CARTAO_CREDITO
+        return Assinatura.FormaPagamento.PIX
+
+    def _payment_date_from_asaas(self, payment):
+        date_value = payment.get('paymentDate') or payment.get('clientPaymentDate') or payment.get('confirmedDate')
+        if not date_value:
+            return None
+        try:
+            return datetime.strptime(date_value[:10], '%Y-%m-%d').date()
+        except (TypeError, ValueError):
+            logger.warning('Webhook Asaas recebeu data de pagamento invalida: %s.', date_value)
+            return None
+
+    def _register_audit_log(self, assinatura, event, payment, previous_status, previous_due_date, action):
+        note = (
+            f'Evento Asaas: {event}; '
+            f'payment_id: {payment.get("id", "")}; '
+            f'status Asaas: {payment.get("status", "")}; '
+            f'forma: {payment.get("billingType", "")}; '
+            f'valor: {payment.get("value", "")}; '
+            f'status anterior: {previous_status}; '
+            f'vencimento anterior: {previous_due_date}; '
+            f'novo vencimento: {assinatura.due_date}.'
+        )
+        FinanceAudit.objects.create(
+            oficina=assinatura.oficina,
+            action=action,
+            note=note,
+        )
+
+
+class AsaasConnectionTestView(LoginRequiredMixin, View):
+    login_url = reverse_lazy('agenda:login')
+
+    def get(self, request, *args, **kwargs):
+        # Endpoint manual para validar Sandbox, chave e conectividade sem expor credenciais.
+        try:
+            data = AsaasClient().test_connection()
+        except AsaasError as exc:
+            return JsonResponse(
+                {
+                    'connected': False,
+                    'environment': settings.ASAAS_BASE_URL,
+                    'detail': str(exc),
+                },
+                status=exc.status_code or 502,
+            )
+
+        return JsonResponse({
+            'connected': True,
+            'environment': settings.ASAAS_BASE_URL,
+            'customers_found': data.get('totalCount', 0),
+        })
+
+
+class AsaasPixTestChargeView(LoginRequiredMixin, UserPassesTestMixin, View):
+    login_url = reverse_lazy('agenda:login')
+
+    def test_func(self):
+        return self.request.user.is_staff
+
+    def get(self, request, *args, **kwargs):
+        # Gera uma cobranca Pix pequena no Sandbox e retorna dados seguros para teste.
+        oficina = getattr(request, 'oficina', None)
+        if oficina is None:
+            return JsonResponse({'detail': 'Oficina nao encontrada para o usuario logado.'}, status=400)
+
+        assinatura = oficina.ensure_assinatura()
+        try:
+            result = AsaasClient().create_test_pix_charge(assinatura, value='5.00')
+        except AsaasError as exc:
+            return JsonResponse(
+                {
+                    'created': False,
+                    'environment': settings.ASAAS_BASE_URL,
+                    'detail': str(exc),
+                },
+                status=exc.status_code or 502,
+            )
+
+        payment = result['payment']
+        qr_code = result['qr_code']
+        encoded_image = qr_code.get('encodedImage', '')
+
+        return JsonResponse({
+            'created': True,
+            'environment': settings.ASAAS_BASE_URL,
+            'payment_id': payment.get('id'),
+            'status': payment.get('status'),
+            'value': payment.get('value'),
+            'due_date': payment.get('dueDate') or result['due_date'],
+            'invoice_url': payment.get('invoiceUrl', ''),
+            'pix': {
+                'qr_code_image_base64': encoded_image,
+                'qr_code_image_data_url': f'data:image/png;base64,{encoded_image}' if encoded_image else '',
+                'copy_paste_code': qr_code.get('payload', ''),
+                'expiration_date': qr_code.get('expirationDate', ''),
+            },
+        })
 
 
 @require_http_methods(['GET', 'POST'])
@@ -127,16 +411,56 @@ class BookingCreateView(FormView):
         return context
 
 
-def get_public_booking_oficina(request, oficina_id=None):
-    oficina = getattr(request, 'oficina', None)
-    if oficina is not None:
-        return oficina
+class PublicBookingCreateView(BookingCreateView):
+    template_name = 'agenda/public_booking_form.html'
+
+    def dispatch(self, request, *args, **kwargs):
+        self.public_oficina = get_object_or_404(Oficina, slug=kwargs.get('slug'))
+        return super().dispatch(request, *args, **kwargs)
+
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        kwargs['oficina'] = self.public_oficina
+        return kwargs
+
+    def get_success_url(self):
+        return reverse('agenda:public_booking_success', kwargs={'slug': self.public_oficina.slug})
+
+    def form_valid(self, form):
+        booking = form.save(commit=False)
+        booking.oficina = self.public_oficina
+        booking.save()
+        try:
+            t = threading.Thread(target=enviar_whatsapp, args=(booking,))
+            t.daemon = True
+            t.start()
+        except Exception:
+            pass
+        return super(BookingCreateView, self).form_valid(form)
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['oficina'] = self.public_oficina
+        context['public_booking_slug'] = self.public_oficina.slug
+        return context
+
+
+def get_public_booking_oficina(request, oficina_id=None, oficina_slug=None):
+    if oficina_slug:
+        try:
+            return Oficina.objects.get(slug=oficina_slug)
+        except Oficina.DoesNotExist:
+            return None
 
     if oficina_id:
         try:
             return Oficina.objects.get(pk=oficina_id)
         except (Oficina.DoesNotExist, ValueError, TypeError):
             return None
+
+    oficina = getattr(request, 'oficina', None)
+    if oficina is not None:
+        return oficina
 
     return Oficina.objects.order_by('nome').first()
 
@@ -146,6 +470,7 @@ class AvailableSlotsView(View):
         date_str = request.GET.get('date')
         duration_str = request.GET.get('duration')
         oficina_id = request.GET.get('oficina')
+        oficina_slug = request.GET.get('oficina_slug')
         if not date_str or not duration_str:
             return JsonResponse({
                 'slots': [],
@@ -167,7 +492,7 @@ class AvailableSlotsView(View):
                 'message': 'Não é possível agendar para datas passadas.',
             })
 
-        oficina = get_public_booking_oficina(request, oficina_id)
+        oficina = get_public_booking_oficina(request, oficina_id, oficina_slug)
         if oficina is None:
             return JsonResponse({
                 'slots': [],
@@ -198,6 +523,19 @@ class BookingSuccessView(TemplateView):
     template_name = 'agenda/booking_success.html'
 
 
+class PublicBookingSuccessView(TemplateView):
+    template_name = 'agenda/public_booking_success.html'
+
+    def dispatch(self, request, *args, **kwargs):
+        self.public_oficina = get_object_or_404(Oficina, slug=kwargs.get('slug'))
+        return super().dispatch(request, *args, **kwargs)
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['oficina'] = self.public_oficina
+        return context
+
+
 class OrdemServicoListView(StaffRequiredMixin, TemplateView):
     template_name = 'agenda/os_list.html'
 
@@ -220,16 +558,32 @@ class OrdemServicoListView(StaffRequiredMixin, TemplateView):
         if date_filter:
             orders = orders.filter(scheduled_date=date_filter)
 
+        orders = orders.order_by('-created_at')
+        paginator = Paginator(orders, 5)
+        page = self.request.GET.get('page')
+        try:
+            orders_page = paginator.page(page)
+        except PageNotAnInteger:
+            orders_page = paginator.page(1)
+        except EmptyPage:
+            orders_page = paginator.page(paginator.num_pages)
+
+        filter_params = self.request.GET.copy()
+        filter_params.pop('page', None)
+
         status_summary = {choice[0]: 0 for choice in OrdemServico.Status.choices}
         totals = OrdemServico.objects.filter(oficina=self.oficina).values('status').annotate(total=Count('id'))
         for item in totals:
             status_summary[item['status']] = item['total']
 
         context.update({
-            'orders': orders.order_by('-created_at'),
+            'orders': orders_page,
+            'orders_paginator': paginator,
+            'total_orders': paginator.count,
             'query': query,
             'status_filter': status,
             'date_filter': date_filter,
+            'filter_querystring': filter_params.urlencode(),
             'status_choices': OrdemServico.Status.choices,
             'status_summary': status_summary,
         })
@@ -389,7 +743,7 @@ class DashboardView(StaffRequiredMixin, TemplateView):
         bookings = bookings.order_by('-scheduled_date', 'start_time', 'full_name')
         
         # Implementar paginação
-        paginator = Paginator(bookings, 10)
+        paginator = Paginator(bookings, 5)
         page = self.request.GET.get('page')
         try:
             bookings_page = paginator.page(page)
@@ -403,11 +757,11 @@ class DashboardView(StaffRequiredMixin, TemplateView):
         daily_summary = []
         for current_date in calendar_days:
             booked = Booking.booked_minutes_for_date(current_date, oficina=self.oficina)
-            occupancy = round((booked / 480) * 100) if booked else 0
+            occupancy = round((booked / BUSINESS_MINUTES) * 100) if booked else 0
             daily_summary.append({
                 'date': current_date,
                 'booked': booked,
-                'available': max(0, 480 - booked),
+                'available': max(0, BUSINESS_MINUTES - booked),
                 'occupancy': occupancy,
                 'intervals': Booking.occupied_intervals_for_date(current_date, oficina=self.oficina),
             })
@@ -430,6 +784,9 @@ class DashboardView(StaffRequiredMixin, TemplateView):
             'bookings': bookings_page,
             'paginator': paginator,
             'total_bookings': paginator.count,
+            'public_booking_url': self.request.build_absolute_uri(
+                reverse('agenda:public_booking', kwargs={'slug': self.oficina.slug})
+            ),
             'calendar_days': calendar_days,
             'daily_summary': daily_summary,
             'status_totals': status_map,
@@ -549,7 +906,9 @@ class FinanceDashboardView(StaffRequiredMixin, TemplateView):
         vehicle = self.request.GET.get('vehicle', '').strip()
         mechanic = self.request.GET.get('mechanic', '').strip()
         status = self.request.GET.get('status', '')
-        filter_querystring = self.request.GET.urlencode()
+        filter_params = self.request.GET.copy()
+        filter_params.pop('page', None)
+        filter_querystring = filter_params.urlencode()
 
         orders = OrdemServico.objects.filter(oficina=self.oficina, status=OrdemServico.Status.COMPLETED)
         if start_date:
@@ -622,7 +981,15 @@ class FinanceDashboardView(StaffRequiredMixin, TemplateView):
             transaction_filters = transaction_filters.filter(ordem_servico__status=status)
 
         pending_alerts = transaction_filters.filter(status='pending', due_date__lt=date.today()).count()
-        receivables = transaction_filters.filter(transaction_type='receivable').order_by('-due_date')[:15]
+        receivables = transaction_filters.filter(transaction_type='receivable').order_by('-due_date')
+        receivables_paginator = Paginator(receivables, 5)
+        page = self.request.GET.get('page')
+        try:
+            receivables_page = receivables_paginator.page(page)
+        except PageNotAnInteger:
+            receivables_page = receivables_paginator.page(1)
+        except EmptyPage:
+            receivables_page = receivables_paginator.page(receivables_paginator.num_pages)
         payables = transaction_filters.filter(transaction_type='payable').order_by('-due_date')[:15]
         cashflow_balance = CashFlowRecord.objects.filter(oficina=self.oficina).aggregate(balance=Sum(Case(When(entry_type='inflow', then=F('amount')), When(entry_type='outflow', then=F('amount') * Value(-1)), default=Value(0), output_field=DecimalField())))['balance'] or 0
 
@@ -652,7 +1019,9 @@ class FinanceDashboardView(StaffRequiredMixin, TemplateView):
             'monthly_series': monthly_series,
             'service_vs_parts': service_vs_parts,
             'pending_alerts': pending_alerts,
-            'receivables': receivables,
+            'receivables': receivables_page,
+            'receivables_paginator': receivables_paginator,
+            'total_receivables': receivables_paginator.count,
             'payables': payables,
             'cashflow_balance': cashflow_balance,
         })
@@ -733,7 +1102,16 @@ class FinanceExportExcelView(StaffRequiredMixin, View):
 
 class FinanceExportPdfView(StaffRequiredMixin, View):
     def get(self, request, pk, *args, **kwargs):
-        ordem = get_object_or_404(OrdemServico, pk=pk, oficina=self.oficina)
+        ordem = get_object_or_404(
+            OrdemServico.objects.select_related('oficina').prefetch_related('service_items', 'part_items'),
+            pk=pk,
+            oficina=self.oficina,
+        )
+        oficina = ordem.oficina
+        service_subtotal = sum((item.total_price for item in ordem.service_items.all()), Decimal('0'))
+        parts_subtotal = sum((item.total_price for item in ordem.part_items.all()), Decimal('0'))
+        discount = getattr(ordem, 'discount', getattr(ordem, 'desconto', Decimal('0'))) or Decimal('0')
+        invoice_total = service_subtotal + parts_subtotal - discount
         response = HttpResponse(content_type='application/pdf')
         response['Content-Disposition'] = f'attachment; filename="cupom_{ordem.order_number}.pdf"'
 
@@ -744,12 +1122,21 @@ class FinanceExportPdfView(StaffRequiredMixin, View):
         buffer = response
         document = canvas.Canvas(buffer, pagesize=A4)
         document.setFont('Helvetica-Bold', 14)
-        document.drawString(30 * mm, 280 * mm, 'Oficina PRO')
+        document.drawString(30 * mm, 280 * mm, oficina.nome or '-')
         document.setFont('Helvetica', 10)
-        document.drawString(30 * mm, 273 * mm, 'Endereço: Rua Exemplo, 123 - Cidade')
-        document.drawString(30 * mm, 267 * mm, 'Telefone: (11) 99999-9999 - WhatsApp: (11) 98888-8888')
-        document.line(30 * mm, 264 * mm, 180 * mm, 264 * mm)
-        y = 258 * mm
+        y = 273 * mm
+        office_lines = [
+            f'CPF/CNPJ: {oficina.documento}' if oficina.documento else '',
+            f'Endereco: {oficina.endereco}' if oficina.endereco else '',
+            f'Cidade/UF: {oficina.cidade}/{oficina.estado}' if oficina.cidade or oficina.estado else '',
+            f'Telefone/WhatsApp: {oficina.telefone}' if oficina.telefone else '',
+            f'E-mail: {oficina.email}' if oficina.email else '',
+        ]
+        for line in [line for line in office_lines if line]:
+            document.drawString(30 * mm, y, line)
+            y -= 6 * mm
+        document.line(30 * mm, y, 180 * mm, y)
+        y -= 8 * mm
         document.setFont('Helvetica-Bold', 12)
         document.drawString(30 * mm, y, f'Cupom de Serviço - {ordem.order_number}')
         y -= 8 * mm
@@ -768,7 +1155,7 @@ class FinanceExportPdfView(StaffRequiredMixin, View):
         document.setFont('Helvetica', 10)
         if ordem.service_items.exists():
             for item in ordem.service_items.all():
-                document.drawString(32 * mm, y, f'{item.description} x{item.quantity} - R$ {item.total_price:.2f}')
+                document.drawString(32 * mm, y, f'{item.description} x{item.quantity} - R$ {item.unit_price:.2f} un. - R$ {item.total_price:.2f}')
                 y -= 7 * mm
                 if y < 30 * mm:
                     document.showPage()
@@ -783,7 +1170,7 @@ class FinanceExportPdfView(StaffRequiredMixin, View):
         document.setFont('Helvetica', 10)
         if ordem.part_items.exists():
             for item in ordem.part_items.all():
-                document.drawString(32 * mm, y, f'{item.description} x{item.quantity} - R$ {item.total_price:.2f}')
+                document.drawString(32 * mm, y, f'{item.description} x{item.quantity} - R$ {item.unit_price:.2f} un. - R$ {item.total_price:.2f}')
                 y -= 7 * mm
                 if y < 30 * mm:
                     document.showPage()
@@ -793,11 +1180,14 @@ class FinanceExportPdfView(StaffRequiredMixin, View):
             y -= 7 * mm
         y -= 8 * mm
         document.setFont('Helvetica-Bold', 11)
-        document.drawString(30 * mm, y, f'Total serviços: R$ {ordem.service_value:.2f}')
+        document.drawString(30 * mm, y, f'Total serviços: R$ {service_subtotal:.2f}')
         y -= 7 * mm
-        document.drawString(30 * mm, y, f'Total peças: R$ {ordem.parts_value:.2f}')
+        document.drawString(30 * mm, y, f'Total peças: R$ {parts_subtotal:.2f}')
+        if discount:
+            y -= 7 * mm
+            document.drawString(30 * mm, y, f'Desconto: R$ {discount:.2f}')
         y -= 7 * mm
-        document.drawString(30 * mm, y, f'Valor total: R$ {ordem.total_value:.2f}')
+        document.drawString(30 * mm, y, f'Valor total: R$ {invoice_total:.2f}')
         y -= 7 * mm
         document.drawString(30 * mm, y, f'Pagamento: {ordem.get_payment_method_display() if ordem.payment_method else "-"}')
         y -= 7 * mm
@@ -818,8 +1208,22 @@ class FinanceInvoiceView(StaffRequiredMixin, TemplateView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         os_pk = self.kwargs.get('pk')
-        ordem = get_object_or_404(OrdemServico, pk=os_pk, oficina=self.oficina)
-        context['ordem'] = ordem
+        ordem = get_object_or_404(
+            OrdemServico.objects.select_related('oficina').prefetch_related('service_items', 'part_items'),
+            pk=os_pk,
+            oficina=self.oficina,
+        )
+        service_subtotal = sum((item.total_price for item in ordem.service_items.all()), Decimal('0'))
+        parts_subtotal = sum((item.total_price for item in ordem.part_items.all()), Decimal('0'))
+        discount = getattr(ordem, 'discount', getattr(ordem, 'desconto', Decimal('0'))) or Decimal('0')
+        context.update({
+            'ordem': ordem,
+            'oficina': ordem.oficina,
+            'service_subtotal': service_subtotal,
+            'parts_subtotal': parts_subtotal,
+            'discount': discount,
+            'invoice_total': service_subtotal + parts_subtotal - discount,
+        })
         return context
 
 
