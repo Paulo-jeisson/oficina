@@ -78,6 +78,7 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
+                'agenda.context_processors.support',
             ],
         },
     },
@@ -87,8 +88,19 @@ TEMPLATES = [
 # Configure these in your environment or set here for local testing.
 WHATSAPP_API_URL = 'https://api.example.com/sendMessage'  # Replace with real API endpoint (Z-API / Twilio etc)
 WHATSAPP_API_TOKEN = ''  # e.g. 'Bearer <token>' or API key
-WHATSAPP_FROM_NUMBER = '5511999999999'  # Oficina WhatsApp (or sender ID)
+WHATSAPP_FROM_NUMBER = '5511982856724'  # Oficina WhatsApp (or sender ID)
 WHATSAPP_TO_NUMBER = '5511982856724'  # Default destination (optional) - you may leave empty and pass explicit number
+SUPORTE_WHATSAPP = config('SUPORTE_WHATSAPP', default='')
+
+EMAIL_BACKEND = config('EMAIL_BACKEND', default='django.core.mail.backends.smtp.EmailBackend')
+EMAIL_HOST = config('EMAIL_HOST', default='')
+EMAIL_PORT = config('EMAIL_PORT', default=587, cast=int)
+EMAIL_HOST_USER = config('EMAIL_HOST_USER', default='')
+EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD', default='')
+EMAIL_USE_TLS = config('EMAIL_USE_TLS', default=True, cast=bool)
+EMAIL_USE_SSL = config('EMAIL_USE_SSL', default=False, cast=bool)
+DEFAULT_FROM_EMAIL = config('DEFAULT_FROM_EMAIL', default=EMAIL_HOST_USER or 'suporte@oficinaonline.local')
+SERVER_EMAIL = config('SERVER_EMAIL', default=DEFAULT_FROM_EMAIL)
 
 
 WSGI_APPLICATION = 'app.wsgi.application'
@@ -140,6 +152,7 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
 
 STATIC_URL = 'static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'

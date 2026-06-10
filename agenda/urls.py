@@ -1,5 +1,11 @@
-from django.contrib.auth.views import LoginView
-from django.urls import path
+from django.contrib.auth.views import (
+    LoginView,
+    PasswordResetCompleteView,
+    PasswordResetConfirmView,
+    PasswordResetDoneView,
+    PasswordResetView,
+)
+from django.urls import path, reverse_lazy
 from .views import (
     PublicHomeView,
     PublicPlansView,
@@ -54,6 +60,35 @@ urlpatterns = [
     path('agendar/success/', BookingSuccessView.as_view(), name='booking_success'),
     path('agendar/available-slots/', AvailableSlotsView.as_view(), name='available_slots'),
     path('login/', LoginView.as_view(template_name='registration/login.html', redirect_authenticated_user=True), name='login'),
+    path(
+        'senha/recuperar/',
+        PasswordResetView.as_view(
+            template_name='registration/password_reset_form.html',
+            email_template_name='agenda/registration/password_reset_email.html',
+            html_email_template_name='agenda/registration/password_reset_email.html',
+            subject_template_name='registration/password_reset_subject.txt',
+            success_url=reverse_lazy('agenda:password_reset_done'),
+        ),
+        name='password_reset',
+    ),
+    path(
+        'senha/recuperar/enviado/',
+        PasswordResetDoneView.as_view(template_name='registration/password_reset_done.html'),
+        name='password_reset_done',
+    ),
+    path(
+        'senha/nova/<uidb64>/<token>/',
+        PasswordResetConfirmView.as_view(
+            template_name='registration/password_reset_confirm.html',
+            success_url=reverse_lazy('agenda:password_reset_complete'),
+        ),
+        name='password_reset_confirm',
+    ),
+    path(
+        'senha/nova/concluido/',
+        PasswordResetCompleteView.as_view(template_name='registration/password_reset_complete.html'),
+        name='password_reset_complete',
+    ),
     path('logout/', logout_view, name='logout'),
     path('dashboard/', DashboardView.as_view(), name='dashboard'),
     path('dashboard/export-excel/', ExportBookingsExcelView.as_view(), name='export_bookings_excel'),
