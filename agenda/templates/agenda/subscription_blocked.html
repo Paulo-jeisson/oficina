@@ -3,9 +3,9 @@
 <section class="blocked-panel">
     <p class="eyebrow">Assinatura</p>
     <h1>Sua assinatura esta bloqueada.</h1>
-    <p>Regularize o pagamento para continuar usando o sistema da {{ request.oficina.nome }}.</p>
+    <p>Sua oficina continua salva. Para recuperar o acesso, pague sua assinatura.</p>
     {% if assinatura %}
-        <p>Valor mensal: R$ {{ assinatura.monthly_amount }}. Vencimento atual: {{ assinatura.due_date|date:'d/m/Y' }}.</p>
+        <p>Valor mensal: R$ {{ assinatura.monthly_amount|floatformat:2 }}. Vencimento atual: {{ assinatura.due_date|date:'d/m/Y' }}.</p>
     {% endif %}
     <form method="post" action="{% url 'agenda:subscription_pay' %}" class="payment-form">
         {% csrf_token %}
@@ -13,23 +13,27 @@
             <label for="{{ payment_form.payment_method.id_for_label }}">Forma de pagamento</label>
             {{ payment_form.payment_method }}
         </div>
-        <button class="btn btn-primary" type="submit">Gerar pagamento Asaas</button>
+        <input type="hidden" name="next" value="{% url 'agenda:subscription_blocked' %}">
+        <button class="btn btn-primary" type="submit">Assinar novamente</button>
         <a class="btn btn-secondary" href="{% url 'agenda:logout' %}">Sair</a>
     </form>
     <div class="payment-actions">
         <form method="post" action="{% url 'agenda:subscription_pay' %}">
             {% csrf_token %}
             <input type="hidden" name="payment_method" value="PIX">
+            <input type="hidden" name="next" value="{% url 'agenda:subscription_blocked' %}">
             <button class="btn btn-primary" type="submit">Pagar assinatura com Pix</button>
         </form>
         <form method="post" action="{% url 'agenda:subscription_pay' %}">
             {% csrf_token %}
             <input type="hidden" name="payment_method" value="CREDIT_CARD">
+            <input type="hidden" name="next" value="{% url 'agenda:subscription_blocked' %}">
             <button class="btn btn-secondary" type="submit">Pagar com cartao</button>
         </form>
     </div>
     {% if assinatura.asaas_invoice_url %}
         <p><a href="{{ assinatura.asaas_invoice_url }}">Abrir ultima cobranca gerada</a></p>
     {% endif %}
+    <p><a href="{% url 'agenda:subscription_detail' %}">Ver detalhes da assinatura</a></p>
 </section>
 {% endblock %}

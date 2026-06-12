@@ -22,6 +22,43 @@
         </div>
     </section>
 
+    {% if pending_whatsapp_bookings %}
+    <section class="whatsapp-booking-panel">
+        <div class="whatsapp-booking-header">
+            <div>
+                <p class="eyebrow">Novo agendamento recebido</p>
+                <h2>Confirme rapidamente pelo WhatsApp</h2>
+            </div>
+            <span>{{ pending_whatsapp_bookings|length }} pendente{{ pending_whatsapp_bookings|length|pluralize }}</span>
+        </div>
+        <div class="whatsapp-booking-list">
+            {% for item in pending_whatsapp_bookings %}
+            {% with booking=item.booking %}
+            <article class="whatsapp-booking-card">
+                <div class="whatsapp-booking-main">
+                    <strong>{{ booking.full_name }}</strong>
+                    <span>{{ booking.phone|default:'Sem telefone' }}</span>
+                    <span>{{ booking.vehicle_brand }} {{ booking.vehicle_model }} {{ booking.vehicle_year }}</span>
+                </div>
+                <div class="whatsapp-booking-details">
+                    <span>{{ booking.get_service_type_display }}</span>
+                    <span>{{ booking.scheduled_date|date:'d/m/Y' }}</span>
+                    <span>{{ booking.start_time|time:'H:i' }}</span>
+                </div>
+                <div class="whatsapp-booking-action">
+                    {% if item.whatsapp_url %}
+                        <a class="btn btn-primary" href="{{ item.whatsapp_url }}" target="_blank" rel="noopener noreferrer">Abrir WhatsApp do cliente</a>
+                    {% else %}
+                        <span class="whatsapp-no-phone">Sem telefone</span>
+                    {% endif %}
+                </div>
+            </article>
+            {% endwith %}
+            {% endfor %}
+        </div>
+    </section>
+    {% endif %}
+
     <div class="summary-grid">
         <article class="summary-card">
             <h3>Total de agendamentos</h3>

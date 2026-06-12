@@ -1,0 +1,116 @@
+{% extends 'agenda/base.html' %}
+{% block content %}
+<section class="subscription-page">
+    <div class="dashboard-head">
+        <div>
+            <p class="eyebrow">Minha assinatura</p>
+            <h1>Gerencie seu plano Oficina Online</h1>
+        </div>
+        {% if assinatura.asaas_invoice_url %}
+            <a class="btn btn-secondary" href="{{ assinatura.asaas_invoice_url }}" target="_blank" rel="noopener noreferrer">Abrir ultima cobranca</a>
+        {% endif %}
+    </div>
+
+    {% if assinatura.status == 'cancelada' %}
+        <div class="message message-warning">
+            Sua assinatura foi cancelada e permanecerá ativa até {{ assinatura.due_date|date:'d/m/Y' }}.
+        </div>
+    {% endif %}
+
+    <section class="subscription-grid">
+        <article class="subscription-card subscription-card-main">
+            <p class="eyebrow">Status atual</p>
+            <div class="subscription-status status-{{ assinatura.status }}">{{ assinatura.get_status_display }}</div>
+            <dl class="subscription-facts">
+                <div>
+                    <dt>Dias restantes do teste</dt>
+                    <dd>{% if assinatura.status == 'teste' %}{{ trial_days_remaining }}{% else %}-{% endif %}</dd>
+                </div>
+                <div>
+                    <dt>Vencimento</dt>
+                    <dd>{{ assinatura.due_date|date:'d/m/Y'|default:'-' }}</dd>
+                </div>
+                <div>
+                    <dt>Valor mensal</dt>
+                    <dd>R$ {{ assinatura.monthly_amount|floatformat:2 }}</dd>
+                </div>
+                <div>
+                    <dt>Ultimo pagamento</dt>
+                    <dd>{{ assinatura.last_payment_at|date:'d/m/Y'|default:'-' }}</dd>
+                </div>
+            </dl>
+        </article>
+
+        <article class="subscription-card">
+            <p class="eyebrow">Pagamento</p>
+            {% if assinatura.status == 'cancelada' %}
+                <h2>Reativar assinatura</h2>
+                <p>Sua assinatura está cancelada, mas seus dados continuam salvos. Para voltar a usar normalmente, escolha uma forma de pagamento.</p>
+            {% elif assinatura.status == 'bloqueado' %}
+                <h2>Assinar novamente</h2>
+                <p>Sua assinatura está bloqueada. Para recuperar o acesso, escolha uma forma de pagamento.</p>
+            {% else %}
+                <h2>Pagar agora</h2>
+            {% endif %}
+            {% if has_pending_charge %}
+                <p>Ja existe uma cobranca gerada para esta assinatura.</p>
+                <div class="subscription-actions">
+                    <a class="btn btn-primary" href="{{ assinatura.asaas_invoice_url }}" target="_blank" rel="noopener noreferrer">Abrir ultima cobranca</a>
+                </div>
+                <p class="subscription-note">Para gerar uma nova cobranca, confirme a acao abaixo.</p>
+            {% endif %}
+            <div class="subscription-payment-options">
+                <form method="post" action="{% url 'agenda:subscription_pay' %}" {% if has_pending_charge %}onsubmit="return confirm('Ja existe uma cobranca pendente. Deseja gerar uma nova cobranca Pix?');"{% endif %}>
+                    {% csrf_token %}
+                    <input type="hidden" name="next" value="{% url 'agenda:subscription_detail' %}">
+                    <input type="hidden" name="payment_method" value="PIX">
+                    {% if has_pending_charge %}<input type="hidden" name="confirm_new_charge" value="1">{% endif %}
+                    <button class="btn btn-primary" type="submit">{% if assinatura.status == 'cancelada' %}Reativar com Pix{% elif assinatura.status == 'bloqueado' %}Assinar com Pix{% else %}Pagar com Pix{% endif %}</button>
+                </form>
+                <form method="post" action="{% url 'agenda:subscription_pay' %}" {% if has_pending_charge %}onsubmit="return confirm('Ja existe uma cobranca pendente. Deseja gerar uma nova cobranca no cartao?');"{% endif %}>
+                    {% csrf_token %}
+                    <input type="hidden" name="next" value="{% url 'agenda:subscription_detail' %}">
+                    <input type="hidden" name="payment_method" value="CREDIT_CARD">
+                    {% if has_pending_charge %}<input type="hidden" name="confirm_new_charge" value="1">{% endif %}
+                    <button class="btn btn-secondary" type="submit">{% if assinatura.status == 'cancelada' %}Reativar com cartão{% elif assinatura.status == 'bloqueado' %}Assinar com cartão{% else %}Pagar com cartao{% endif %}</button>
+                </form>
+            </div>
+        </article>
+    </section>
+
+    <section class="subscription-grid">
+        <article class="subscription-card">
+            <p class="eyebrow">Historico basico</p>
+            <dl class="subscription-facts compact">
+                <div>
+                    <dt>Data de criacao</dt>
+                    <dd>{{ assinatura.created_at|date:'d/m/Y' }}</dd>
+                </div>
+                <div>
+                    <dt>Status atual</dt>
+                    <dd>{{ assinatura.get_status_display }}</dd>
+                </div>
+                <div>
+                    <dt>Vencimento</dt>
+                    <dd>{{ assinatura.due_date|date:'d/m/Y'|default:'-' }}</dd>
+                </div>
+                <div>
+                    <dt>Ultimo pagamento</dt>
+                    <dd>{{ assinatura.last_payment_at|date:'d/m/Y'|default:'-' }}</dd>
+                </div>
+            </dl>
+        </article>
+
+        <article class="subscription-card subscription-cancel-card">
+            <p class="eyebrow">Cancelamento</p>
+            <h2>Cancelar assinatura</h2>
+            <p>O cancelamento nao exclui dados da oficina, clientes, ordens de servico ou financeiro.</p>
+            <p>Voce continuara usando o sistema ate {{ assinatura.due_date|date:'d/m/Y'|default:'o vencimento atual' }}.</p>
+            <form method="post" action="{% url 'agenda:subscription_cancel' %}" onsubmit="return confirm('Tem certeza que deseja cancelar sua assinatura? Seus dados serao mantidos.');">
+                {% csrf_token %}
+                <button class="btn btn-danger" type="submit" {% if assinatura.status == 'cancelada' or assinatura.status == 'bloqueado' %}disabled{% endif %}>Cancelar assinatura</button>
+            </form>
+        </article>
+    </section>
+</section>
+{% endblock %}

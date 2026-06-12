@@ -31,7 +31,10 @@ ALLOWED_HOSTS = [
     '127.0.0.1',
     'localhost',
     '.ngrok-free.app',
-    '.ngrok-free.dev'
+    '.ngrok-free.dev',
+    '34.224.231.171',
+    'gestaooficinaoficial.com.br',
+    'www.gestaooficinaoficial.com.br',
 ]
 
 CSRF_TRUSTED_ORIGINS = [
@@ -84,12 +87,12 @@ TEMPLATES = [
     },
 ]
 
-# WhatsApp / Notifications settings (example)
-# Configure these in your environment or set here for local testing.
-WHATSAPP_API_URL = 'https://api.example.com/sendMessage'  # Replace with real API endpoint (Z-API / Twilio etc)
-WHATSAPP_API_TOKEN = ''  # e.g. 'Bearer <token>' or API key
-WHATSAPP_FROM_NUMBER = '5511982856724'  # Oficina WhatsApp (or sender ID)
-WHATSAPP_TO_NUMBER = '5511982856724'  # Default destination (optional) - you may leave empty and pass explicit number
+# WhatsApp / Z-API settings.
+# Keep URLs, tokens and fallback numbers in .env or environment variables.
+WHATSAPP_API_URL = config('WHATSAPP_API_URL', default='')
+WHATSAPP_API_TOKEN = config('WHATSAPP_API_TOKEN', default='')
+WHATSAPP_CLIENT_TOKEN = config('WHATSAPP_CLIENT_TOKEN', default='')
+WHATSAPP_TO_NUMBER = config('WHATSAPP_TO_NUMBER', default='')
 SUPORTE_WHATSAPP = config('SUPORTE_WHATSAPP', default='')
 
 EMAIL_BACKEND = config('EMAIL_BACKEND', default='django.core.mail.backends.smtp.EmailBackend')
@@ -141,7 +144,7 @@ AUTH_PASSWORD_VALIDATORS = [
 
 LANGUAGE_CODE = 'pt-br'
 
-TIME_ZONE = 'UTC'
+TIME_ZONE = 'America/Sao_Paulo'
 
 USE_I18N = True
 

@@ -3,7 +3,7 @@
 {% block content %}
 <section class="public-page-head">
     <p class="public-eyebrow">Planos</p>
-    <h1>Comece grátis por 3 dias e organize sua oficina com mais controle.</h1>
+    <h1>Comece gratis por 20 dias e organize sua oficina com mais controle.</h1>
     <p>Um plano simples para usar agenda, O.S e financeiro no mesmo sistema.</p>
 </section>
 
@@ -12,27 +12,35 @@
         <span class="recommended-badge">Mais indicado</span>
         <div class="pricing-header">
             <span>Plano Oficina Online</span>
-            <strong>R$ 150,00</strong>
-            <small>por mês</small>
+            <strong>R$ 99,90</strong>
+            <small>por mes</small>
         </div>
         <ul class="pricing-list">
-            <li>Teste grátis de 3 dias.</li>
-            <li>Controle de clientes, veículos e ordens de serviço.</li>
+            <li>Teste gratis de 20 dias.</li>
+            <li>Controle de clientes, veiculos e ordens de servico.</li>
             <li>Agenda e financeiro integrados no mesmo painel.</li>
-            <li>Pagamento por Pix e cartão de crédito.</li>
+            <li>Pagamento por Pix e cartao de credito.</li>
         </ul>
         {% if request.user.is_authenticated %}
             {% if request.oficina %}
                 <form method="post" action="{% url 'agenda:subscription_pay' %}">
                     {% csrf_token %}
                     <input type="hidden" name="payment_method" value="PIX">
+                    <input type="hidden" name="next" value="{% url 'agenda:subscription_detail' %}">
                     <button class="btn btn-primary" type="submit">Gerar cobranca Pix da assinatura</button>
+                </form>
+                <form method="post" action="{% url 'agenda:subscription_pay' %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="payment_method" value="CREDIT_CARD">
+                    <input type="hidden" name="next" value="{% url 'agenda:subscription_detail' %}">
+                    <button class="btn btn-secondary" type="submit">Gerar cobranca no cartao</button>
                 </form>
                 {% with assinatura=request.oficina.assinatura_atual %}
                     {% if assinatura.asaas_invoice_url %}
                         <a class="btn btn-secondary" href="{{ assinatura.asaas_invoice_url }}">Abrir ultima cobranca</a>
                     {% endif %}
                 {% endwith %}
+                <a class="btn btn-secondary" href="{% url 'agenda:subscription_detail' %}">Minha assinatura</a>
             {% else %}
                 <p class="plan-alert">Voce esta logado, mas nao ha oficina vinculada ao seu usuario.</p>
                 <p>Cadastre ou vincule uma oficina ao seu usuario para gerar a cobranca da assinatura.</p>

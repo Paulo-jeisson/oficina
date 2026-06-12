@@ -11,6 +11,7 @@ from .models import (
     CashFlowRecord,
     FinanceAudit,
     EstoqueItem,
+    WhatsAppMessage,
 )
 
 
@@ -69,6 +70,14 @@ class BookingAdmin(admin.ModelAdmin):
     list_filter = ('oficina', 'status', 'scheduled_date', 'service_type')
     search_fields = ('full_name', 'phone', 'vehicle_brand', 'vehicle_model')
     readonly_fields = ('created_at', 'updated_at')
+
+
+@admin.register(WhatsAppMessage)
+class WhatsAppMessageAdmin(admin.ModelAdmin):
+    list_display = ('oficina', 'booking', 'destination_phone', 'status', 'sent_at', 'created_at')
+    list_filter = ('oficina', 'status', 'created_at', 'sent_at')
+    search_fields = ('destination_phone', 'message', 'error', 'booking__full_name')
+    readonly_fields = ('oficina', 'booking', 'destination_phone', 'message', 'status', 'error', 'sent_at', 'created_at', 'updated_at')
 
 
 class OrdemServicoStatusInline(admin.TabularInline):

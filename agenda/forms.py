@@ -11,6 +11,7 @@ from .models import (
     BUSINESS_START,
     BUSINESS_END,
     BUSINESS_MINUTES,
+    LUNCH_BLOCKED_START_TIMES,
     OrdemServicoServiceItem,
     OrdemServicoPartItem,
     OrdemServico,
@@ -206,6 +207,12 @@ class BookingForm(forms.ModelForm):
 
             if cleaned['start_time'] < BUSINESS_START:
                 self.add_error('start_time', _('O horário deve começar a partir de 07:00.'))
+
+            if cleaned['start_time'] in LUNCH_BLOCKED_START_TIMES:
+                self.add_error('start_time', _('Este horario esta indisponivel para o intervalo de almoco. Escolha outro horario.'))
+
+            if Booking.violates_minimum_lead_time(scheduled_date, cleaned['start_time']):
+                self.add_error('start_time', _('Este horario ja passou ou esta muito proximo. Escolha um horario futuro com pelo menos 30 minutos de antecedencia.'))
 
             end_minutes = Booking._time_to_minutes(cleaned['start_time']) + duration_minutes
             if end_minutes > Booking._time_to_minutes(BUSINESS_END):

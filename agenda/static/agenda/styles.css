@@ -935,6 +935,190 @@ textarea {
   color: var(--primary);
 }
 
+.whatsapp-booking-panel {
+  display: grid;
+  gap: 1rem;
+  padding: 1.35rem;
+  border: 1px solid rgba(34, 197, 94, 0.32);
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(22, 163, 74, 0.14), rgba(23, 25, 35, 0.96));
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.28);
+}
+
+.whatsapp-booking-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-start;
+}
+
+.whatsapp-booking-header h2 {
+  margin: 0.25rem 0 0;
+}
+
+.whatsapp-booking-header span {
+  padding: 0.45rem 0.75rem;
+  border: 1px solid rgba(34, 197, 94, 0.34);
+  border-radius: 999px;
+  color: #86efac;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.whatsapp-booking-list {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.whatsapp-booking-card {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.15fr) minmax(220px, 1fr) auto;
+  gap: 1rem;
+  align-items: center;
+  padding: 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 14px;
+  background: rgba(15, 17, 21, 0.66);
+}
+
+.whatsapp-booking-main,
+.whatsapp-booking-details {
+  display: grid;
+  gap: 0.28rem;
+}
+
+.whatsapp-booking-main strong {
+  font-size: 1rem;
+}
+
+.whatsapp-booking-main span,
+.whatsapp-booking-details span,
+.whatsapp-no-phone {
+  color: var(--muted);
+}
+
+.whatsapp-booking-action {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.whatsapp-booking-action .btn {
+  min-height: 42px;
+  padding: 0.72rem 1rem;
+  white-space: nowrap;
+}
+
+.whatsapp-no-phone {
+  display: inline-flex;
+  align-items: center;
+  min-height: 42px;
+  padding: 0 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+  font-weight: 700;
+}
+
+.subscription-page {
+  display: grid;
+  gap: 1.5rem;
+}
+
+.subscription-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.subscription-card {
+  display: grid;
+  gap: 1rem;
+  padding: 1.5rem;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: var(--surface);
+  box-shadow: 0 10px 30px rgba(0,0,0,0.35);
+}
+
+.subscription-card h2 {
+  margin: 0;
+}
+
+.subscription-status {
+  width: fit-content;
+  padding: 0.55rem 0.85rem;
+  border-radius: 999px;
+  background: rgba(79, 140, 255, 0.14);
+  color: var(--primary-soft);
+  font-weight: 800;
+}
+
+.subscription-status.status-ativo {
+  background: rgba(34, 197, 94, 0.14);
+  color: #86efac;
+}
+
+.subscription-status.status-vencido,
+.subscription-status.status-cancelada {
+  background: rgba(245, 158, 11, 0.14);
+  color: #fbbf24;
+}
+
+.subscription-status.status-bloqueado {
+  background: rgba(239, 68, 68, 0.14);
+  color: #fca5a5;
+}
+
+.subscription-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.85rem;
+  margin: 0;
+}
+
+.subscription-facts.compact {
+  grid-template-columns: 1fr;
+}
+
+.subscription-facts div {
+  padding: 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: rgba(15, 17, 21, 0.5);
+}
+
+.subscription-facts dt {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.subscription-facts dd {
+  margin: 0.35rem 0 0;
+  font-size: 1.1rem;
+  font-weight: 800;
+}
+
+.subscription-payment-options,
+.subscription-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.subscription-note {
+  color: var(--muted);
+  margin: 0;
+}
+
+.subscription-cancel-card {
+  border-color: rgba(239, 68, 68, 0.24);
+}
+
+.subscription-cancel-card p {
+  color: var(--muted);
+  margin: 0;
+}
+
 .os-summary-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(240px, 1fr));
@@ -1134,6 +1318,9 @@ tbody tr:hover {
   .plan-benefits,
   .contact-steps,
   .summary-grid,
+  .whatsapp-booking-card,
+  .subscription-grid,
+  .subscription-facts,
   .filters-form,
   .calendar-grid {
     grid-template-columns: 1fr;
@@ -1232,6 +1419,25 @@ tbody tr:hover {
 
   .table-card {
     padding: 1rem;
+  }
+
+  .whatsapp-booking-header {
+    flex-direction: column;
+  }
+
+  .whatsapp-booking-action {
+    justify-content: stretch;
+  }
+
+  .whatsapp-booking-action .btn,
+  .whatsapp-no-phone {
+    width: 100%;
+  }
+
+  .subscription-payment-options .btn,
+  .subscription-actions .btn,
+  .subscription-cancel-card .btn {
+    width: 100%;
   }
 
   thead th,

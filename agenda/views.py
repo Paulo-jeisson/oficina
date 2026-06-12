@@ -1,8 +1,10 @@
 import json
 import logging
 import secrets
+import re
 from datetime import date, datetime, timedelta
 from decimal import Decimal
+from urllib.parse import quote
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import login, logout
@@ -15,6 +17,7 @@ from django.views.decorators.http import require_http_methods
 from django.utils.decorators import method_decorator
 from django.views.generic import FormView, TemplateView, View
 from django.urls import reverse, reverse_lazy
+from django.utils import timezone
 from django.db.models import Q, Sum, Count, Avg, F, Case, When, Value, DecimalField
 from .asaas import AsaasClient, AsaasError
 from .forms import (
@@ -40,7 +43,7 @@ from .models import (
     FinanceAudit,
     Oficina,
 )
-from .utils import enviar_whatsapp
+from .whatsapp import send_booking_whatsapp
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 import threading
@@ -68,7 +71,7 @@ class OficinaSignupView(FormView):
     def form_valid(self, form):
         user = form.save()
         login(self.request, user)
-        messages.success(self.request, 'Cadastro criado. Seu teste gratis de 3 dias ja comecou.')
+        messages.success(self.request, 'Cadastro criado. Seu teste gratis de 20 dias ja comecou.')
         return super().form_valid(form)
 
 
@@ -85,16 +88,74 @@ class SubscriptionBlockedView(LoginRequiredMixin, TemplateView):
         return context
 
 
+class SubscriptionDetailView(LoginRequiredMixin, TemplateView):
+    template_name = 'agenda/subscription_detail.html'
+    login_url = reverse_lazy('agenda:login')
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        assinatura = self.request.oficina.ensure_assinatura()
+        assinatura.refresh_status()
+        today = timezone.localdate()
+        trial_days_remaining = 0
+        if assinatura.status == Assinatura.Status.TESTE and assinatura.trial_ends_at:
+            trial_days_remaining = max((assinatura.trial_ends_at - today).days, 0)
+
+        has_pending_charge = bool(
+            assinatura.asaas_invoice_url
+            and assinatura.asaas_payment_id
+            and not assinatura.last_payment_at
+        )
+
+        context.update({
+            'assinatura': assinatura,
+            'payment_form': AssinaturaPaymentForm(),
+            'trial_days_remaining': trial_days_remaining,
+            'has_pending_charge': has_pending_charge,
+            'today': today,
+        })
+        return context
+
+
+class SubscriptionCancelView(LoginRequiredMixin, View):
+    login_url = reverse_lazy('agenda:login')
+
+    def post(self, request, *args, **kwargs):
+        assinatura = request.oficina.ensure_assinatura()
+        assinatura.refresh_status()
+        if assinatura.status == Assinatura.Status.BLOQUEADO:
+            messages.error(request, 'Assinatura bloqueada nao pode ser cancelada.')
+            return redirect('agenda:subscription_detail')
+
+        if assinatura.status != Assinatura.Status.CANCELADA:
+            assinatura.status = Assinatura.Status.CANCELADA
+            assinatura.save(update_fields=['status', 'updated_at'])
+
+        due_date = assinatura.due_date.strftime('%d/%m/%Y') if assinatura.due_date else 'o vencimento atual'
+        messages.success(request, f'Sua assinatura foi cancelada e permanecerá ativa até {due_date}.')
+        return redirect('agenda:subscription_detail')
+
+
 class AssinaturaPaymentCreateView(LoginRequiredMixin, View):
     login_url = reverse_lazy('agenda:login')
 
     def post(self, request, *args, **kwargs):
+        fallback_url = request.POST.get('next') or request.META.get('HTTP_REFERER') or reverse('agenda:subscription_detail')
         form = AssinaturaPaymentForm(request.POST)
         if not form.is_valid():
             messages.error(request, 'Escolha uma forma de pagamento valida.')
-            return redirect('agenda:subscription_blocked')
+            return redirect(fallback_url)
 
         assinatura = request.oficina.ensure_assinatura()
+        has_pending_charge = bool(
+            assinatura.asaas_invoice_url
+            and assinatura.asaas_payment_id
+            and not assinatura.last_payment_at
+        )
+        if has_pending_charge and request.POST.get('confirm_new_charge') != '1':
+            messages.info(request, 'Ja existe uma cobranca gerada. Abra a ultima cobranca ou confirme a geracao de uma nova.')
+            return redirect(fallback_url)
+
         try:
             payment = AsaasClient().create_payment(
                 assinatura,
@@ -103,14 +164,14 @@ class AssinaturaPaymentCreateView(LoginRequiredMixin, View):
             )
         except AsaasError as exc:
             messages.error(request, f'Nao foi possivel gerar a cobranca no Asaas: {exc}')
-            return redirect('agenda:subscription_blocked')
+            return redirect(fallback_url)
 
         payment_url = payment.get('invoiceUrl') or assinatura.asaas_invoice_url
         if payment_url:
             return redirect(payment_url)
 
         messages.error(request, 'O Asaas criou a cobranca, mas nao retornou link de pagamento.')
-        return redirect('agenda:subscription_blocked')
+        return redirect(fallback_url)
 
 
 @method_decorator(csrf_exempt, name='dispatch')
@@ -381,7 +442,7 @@ class BookingCreateView(FormView):
         booking.save()
         # Envia notificação de WhatsApp em background (não bloqueia a resposta ao cliente)
         try:
-            t = threading.Thread(target=enviar_whatsapp, args=(booking,))
+            t = threading.Thread(target=send_booking_whatsapp, args=(booking,))
             t.daemon = True
             t.start()
         except Exception:
@@ -431,7 +492,7 @@ class PublicBookingCreateView(BookingCreateView):
         booking.oficina = self.public_oficina
         booking.save()
         try:
-            t = threading.Thread(target=enviar_whatsapp, args=(booking,))
+            t = threading.Thread(target=send_booking_whatsapp, args=(booking,))
             t.daemon = True
             t.start()
         except Exception:
@@ -722,6 +783,37 @@ class OrdemServicoPrintView(StaffRequiredMixin, TemplateView):
 class DashboardView(StaffRequiredMixin, TemplateView):
     template_name = 'agenda/dashboard.html'
 
+    @staticmethod
+    def _normalize_whatsapp_phone(phone):
+        digits = re.sub(r'\D+', '', phone or '')
+        if not digits:
+            return ''
+        if digits.startswith('55'):
+            return digits if len(digits) in (12, 13) else ''
+        if len(digits) in (10, 11):
+            return f'55{digits}'
+        return ''
+
+    def _build_pending_whatsapp_items(self):
+        pending_bookings = (
+            Booking.objects.filter(oficina=self.oficina, status=Booking.Status.SCHEDULED)
+            .order_by('-created_at')[:5]
+        )
+        items = []
+        for booking in pending_bookings:
+            phone = self._normalize_whatsapp_phone(booking.phone)
+            message = (
+                f'Olá, {booking.full_name}! Recebemos seu agendamento na {self.oficina.nome} '
+                f'para o dia {booking.scheduled_date.strftime("%d/%m/%Y")} às '
+                f'{booking.start_time.strftime("%H:%M")}. Serviço: {booking.get_service_type_display()}. '
+                'Podemos confirmar?'
+            )
+            items.append({
+                'booking': booking,
+                'whatsapp_url': f'https://wa.me/{phone}?text={quote(message)}' if phone else '',
+            })
+        return items
+
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         query = self.request.GET.get('q', '').strip()
@@ -797,6 +889,7 @@ class DashboardView(StaffRequiredMixin, TemplateView):
             'filter_querystring': filter_params.urlencode(),
             'selected_schedule': selected_schedule,
             'status_choices': Booking.Status.choices,
+            'pending_whatsapp_bookings': self._build_pending_whatsapp_items(),
         })
         return context
 

@@ -72,6 +72,8 @@ BUSINESS_START = time(7, 0)
 BUSINESS_END = time(17, 0)
 BUSINESS_MINUTES = 600
 SLOT_STEP = 30
+LUNCH_BLOCKED_START_TIMES = {time(12, 0), time(12, 30), time(13, 0)}
+BOOKING_MIN_LEAD_TIME = timedelta(minutes=30)
 
 
 class Oficina(models.Model):
@@ -149,13 +151,14 @@ class Assinatura(models.Model):
         ATIVO = 'ativo', 'Ativo'
         VENCIDO = 'vencido', 'Vencido'
         BLOQUEADO = 'bloqueado', 'Bloqueado'
+        CANCELADA = 'cancelada', 'Cancelada'
 
     class FormaPagamento(models.TextChoices):
         PIX = 'pix', 'Pix'
         CARTAO_CREDITO = 'cartao_credito', 'Cartao de credito'
 
-    VALOR_MENSAL_PADRAO = Decimal('150.00')
-    DIAS_TESTE_GRATIS = 3
+    VALOR_MENSAL_PADRAO = Decimal('99.90')
+    DIAS_TESTE_GRATIS = 20
     DIAS_TOLERANCIA_BLOQUEIO = 2
 
     oficina = models.OneToOneField(
@@ -228,6 +231,11 @@ class Assinatura(models.Model):
         reference_date = reference_date or timezone.localdate()
         if self.status == self.Status.BLOQUEADO:
             return self.status
+        if self.status == self.Status.CANCELADA:
+            if self.due_date and reference_date > self.due_date:
+                self.status = self.Status.BLOQUEADO
+            else:
+                return self.status
         if self.should_block(reference_date=reference_date):
             self.status = self.Status.BLOQUEADO
         elif self.status == self.Status.TESTE and self.trial_ends_at and reference_date > self.trial_ends_at:
@@ -357,6 +365,22 @@ class Booking(OficinaOwnedModel):
         return False
 
     @classmethod
+    def minimum_start_minutes_for_date(cls, scheduled_date):
+        now = timezone.localtime()
+        if scheduled_date != now.date():
+            return None
+
+        minimum_dt = now + BOOKING_MIN_LEAD_TIME
+        if minimum_dt.date() > scheduled_date:
+            return cls._time_to_minutes(BUSINESS_END) + SLOT_STEP
+        return cls._time_to_minutes(minimum_dt.time())
+
+    @classmethod
+    def violates_minimum_lead_time(cls, scheduled_date, start_time):
+        minimum_start = cls.minimum_start_minutes_for_date(scheduled_date)
+        return minimum_start is not None and cls._time_to_minutes(start_time) < minimum_start
+
+    @classmethod
     def available_start_times_for_date(cls, scheduled_date, duration_minutes, oficina=None):
         if duration_minutes > BUSINESS_MINUTES:
             return []
@@ -370,8 +394,13 @@ class Booking(OficinaOwnedModel):
             return []
 
         result = []
+        minimum_start = cls.minimum_start_minutes_for_date(scheduled_date)
         for candidate in range(start_min, end_min + 1, SLOT_STEP):
+            if minimum_start is not None and candidate < minimum_start:
+                continue
             candidate_time = cls._minutes_to_time(candidate)
+            if candidate_time in LUNCH_BLOCKED_START_TIMES:
+                continue
             if not cls.overlaps(scheduled_date, candidate_time, duration_minutes, oficina=oficina):
                 result.append(candidate_time)
         return result
@@ -411,6 +440,40 @@ class Booking(OficinaOwnedModel):
 
     def get_absolute_url(self):
         return reverse('agenda:booking_success')
+
+
+class WhatsAppMessage(OficinaOwnedModel):
+    class Status(models.TextChoices):
+        PENDING = 'pending', 'Pendente'
+        SENT = 'sent', 'Enviado'
+        FAILED = 'failed', 'Falhou'
+
+    booking = models.ForeignKey(
+        Booking,
+        related_name='whatsapp_messages',
+        on_delete=models.CASCADE,
+        verbose_name='Agendamento',
+    )
+    destination_phone = models.CharField('Telefone destino', max_length=20)
+    message = models.TextField('Mensagem')
+    status = models.CharField('Status', max_length=20, choices=Status.choices, default=Status.PENDING)
+    error = models.TextField('Erro', blank=True)
+    sent_at = models.DateTimeField('Enviado em', null=True, blank=True)
+    created_at = models.DateTimeField('Criado em', auto_now_add=True)
+    updated_at = models.DateTimeField('Atualizado em', auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = 'Mensagem WhatsApp'
+        verbose_name_plural = 'Mensagens WhatsApp'
+
+    def __str__(self):
+        return f'{self.destination_phone} - {self.get_status_display()}'
+
+    def save(self, *args, **kwargs):
+        if not self.oficina_id and self.booking_id:
+            self.oficina = self.booking.oficina
+        super().save(*args, **kwargs)
 
 
 class OrdemServico(OficinaOwnedModel):
