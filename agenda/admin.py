@@ -35,9 +35,9 @@ class AssinaturaInline(admin.StackedInline):
 
 @admin.register(Oficina)
 class OficinaAdmin(admin.ModelAdmin):
-    list_display = ('nome', 'business_type', 'mechanic_count', 'email', 'telefone', 'dono', 'created_at')
+    list_display = ('nome', 'business_type', 'mechanic_count', 'email', 'telefone', 'whatsapp', 'dono', 'created_at')
     list_filter = ('business_type', 'mechanic_count')
-    search_fields = ('nome', 'email', 'telefone', 'documento', 'dono__username', 'dono__email')
+    search_fields = ('nome', 'email', 'telefone', 'whatsapp', 'documento', 'dono__username', 'dono__email')
     readonly_fields = ('created_at',)
     inlines = [AssinaturaInline]
 

@@ -3,61 +3,32 @@
 {% block content %}
 <section class="public-hero">
     <div class="public-hero-copy">
-        <p class="public-eyebrow">Oficina Online</p>
-        <h1>Sistema para oficina mecânica com O.S, agenda e financeiro</h1>
-        <p>Controle clientes, veículos, ordens de serviço, agenda e financeiro em um só lugar.</p>
+        <p class="public-eyebrow">Sistema para oficinas e centros automotivos</p>
+        <h1>Controle sua oficina, moto center ou auto elétrica em um só lugar.</h1>
+        <p>Agendamentos, Ordens de Serviço, Boxes, Financeiro e Atendimento ao Cliente em uma única plataforma.</p>
         <div class="public-actions">
             <a class="btn btn-primary" href="{% url 'agenda:signup' %}">Testar agora gratis</a>
             <a class="btn btn-secondary" href="{% url 'agenda:plans' %}">Ver planos</a>
         </div>
         <div class="public-payment-note">
             <span>Teste grátis: 20 dias</span>
-            <span>Pix e cartão de crédito</span>
+            <span>Oficinas mecânicas, motos e auto elétricas</span>
         </div>
     </div>
 
-    <div class="system-mockup" aria-label="Prévia visual do sistema Oficina Online">
-        <div class="mockup-topbar">
-            <span></span>
-            <span></span>
-            <span></span>
-        </div>
-        <div class="mockup-content">
-            <aside class="mockup-sidebar">
-                <strong>Oficina Online</strong>
-                <span></span>
-                <span></span>
-                <span></span>
-            </aside>
-            <div class="mockup-main">
-                <div class="mockup-summary">
-                    <article>
-                        <span>Agenda hoje</span>
-                        <strong>18</strong>
-                    </article>
-                    <article>
-                        <span>O.S abertas</span>
-                        <strong>7</strong>
-                    </article>
-                    <article>
-                        <span>Financeiro</span>
-                        <strong>R$ 8.450</strong>
-                    </article>
-                </div>
-                <div class="mockup-chart">
-                    <span class="bar-42"></span>
-                    <span class="bar-66"></span>
-                    <span class="bar-48"></span>
-                    <span class="bar-78"></span>
-                    <span class="bar-58"></span>
-                </div>
-                <div class="mockup-table">
-                    <span></span>
-                    <span></span>
-                    <span></span>
-                </div>
-            </div>
-        </div>
+    <div class="public-hero-media" aria-label="Oficinas e centros automotivos atendidos pelo Oficina Online">
+        <figure class="hero-photo hero-photo-large">
+            <img src="https://images.unsplash.com/photo-1486262715619-67b85e0b08d3?auto=format&fit=crop&w=900&q=80" alt="Mecânico trabalhando em carro dentro de uma oficina moderna">
+            <figcaption>Oficina mecânica</figcaption>
+        </figure>
+        <figure class="hero-photo">
+            <img src="https://images.unsplash.com/photo-1558981806-ec527fa84c39?auto=format&fit=crop&w=600&q=80" alt="Moto em ambiente de manutenção">
+            <figcaption>Moto center</figcaption>
+        </figure>
+        <figure class="hero-photo">
+            <img src="https://images.unsplash.com/photo-1581092160562-40aa08e78837?auto=format&fit=crop&w=600&q=80" alt="Profissional técnico trabalhando com componentes elétricos">
+            <figcaption>Auto elétrica</figcaption>
+        </figure>
     </div>
 </section>
 
@@ -67,40 +38,117 @@
         <span>de teste grátis</span>
     </article>
     <article>
-        <strong>R$ 99,90</strong>
-        <span>por mês</span>
+        <strong>Boxes</strong>
+        <span>controle por capacidade de atendimento</span>
     </article>
     <article>
-        <strong>Pix</strong>
-        <span>e cartão de crédito</span>
+        <strong>Online</strong>
+        <span>agendamento público e WhatsApp por link</span>
     </article>
     <article>
         <strong>1 painel</strong>
-        <span>para agenda, O.S e financeiro</span>
+        <span>para agenda, O.S, boxes e financeiro</span>
     </article>
 </section>
 
 <section class="public-section-head">
-    <p class="public-eyebrow">Funcionalidades</p>
-    <h2>Uma rotina mais organizada para sua oficina</h2>
+    <p class="public-eyebrow">Benefícios</p>
+    <h2>Gestão completa para oficina mecânica, oficina de moto e auto elétrica</h2>
 </section>
 
-<section class="public-card-grid">
+<section class="public-card-grid public-benefits-grid">
     <article class="public-feature-card">
-        <span>01</span>
-        <h3>Agenda inteligente</h3>
-        <p>Visualize horários, acompanhe solicitações e organize a entrada de veículos.</p>
+        <span>🚗</span>
+        <h3>Controle de Ordens de Serviço</h3>
+        <p>Organize clientes, veículos, serviços, peças, status e histórico de atendimento em uma rotina clara.</p>
     </article>
     <article class="public-feature-card">
-        <span>02</span>
-        <h3>Ordens de serviço</h3>
-        <p>Controle clientes, veículos, status, serviços, peças e histórico em cada O.S.</p>
+        <span>📅</span>
+        <h3>Agenda Inteligente com Boxes</h3>
+        <p>Distribua agendamentos por Box e aproveite melhor a capacidade real da sua operação.</p>
     </article>
     <article class="public-feature-card">
-        <span>03</span>
-        <h3>Financeiro da oficina</h3>
-        <p>Acompanhe faturamento, pagamentos e indicadores importantes em poucos cliques.</p>
+        <span>⚡</span>
+        <h3>Gestão para Auto Elétricas</h3>
+        <p>Acompanhe diagnósticos, revisões elétricas e atendimentos técnicos com mais previsibilidade.</p>
     </article>
+    <article class="public-feature-card">
+        <span>🏍️</span>
+        <h3>Gestão para Oficinas de Moto</h3>
+        <p>Controle entrada, execução e entrega de serviços para motos com agenda online e O.S integrada.</p>
+    </article>
+    <article class="public-feature-card">
+        <span>💰</span>
+        <h3>Financeiro Integrado</h3>
+        <p>Acompanhe receitas, contas, pagamentos e indicadores sem perder o vínculo com os atendimentos.</p>
+    </article>
+    <article class="public-feature-card">
+        <span>📲</span>
+        <h3>Agendamento Online e WhatsApp</h3>
+        <p>Receba solicitações pelo link público e facilite a confirmação com mensagens via WhatsApp.</p>
+    </article>
+</section>
+
+<section class="public-section-head">
+    <p class="public-eyebrow">Por que escolher</p>
+    <h2>Diferenciais reais para centros automotivos que querem mais controle</h2>
+</section>
+
+<section class="public-differentials">
+    <article>Agendamento Online</article>
+    <article>Controle de Boxes</article>
+    <article>Bloqueio de Boxes</article>
+    <article>Painel de acompanhamento</article>
+    <article>WhatsApp integrado por link</article>
+    <article>Controle financeiro</article>
+    <article>Multiempresa</article>
+    <article>Teste grátis</article>
+</section>
+
+<section class="public-section-head">
+    <p class="public-eyebrow">Tipos de operação</p>
+    <h2>Funciona para diversos tipos de oficinas</h2>
+</section>
+
+<section class="public-workshop-grid">
+    <article>
+        <img src="https://images.unsplash.com/photo-1492144534655-ae79c964c9d7?auto=format&fit=crop&w=700&q=80" alt="Carro em centro automotivo moderno">
+        <div>
+            <span>🚗</span>
+            <h3>Oficina Mecânica</h3>
+            <p>Controle serviços, revisões e manutenção multimarcas.</p>
+        </div>
+    </article>
+    <article>
+        <img src="https://images.unsplash.com/photo-1558981359-219d6364c9c8?auto=format&fit=crop&w=700&q=80" alt="Moto em oficina especializada">
+        <div>
+            <span>🏍️</span>
+            <h3>Oficina de Moto</h3>
+            <p>Organize agenda, clientes e serviços de moto centers.</p>
+        </div>
+    </article>
+    <article>
+        <img src="https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=700&q=80" alt="Componentes eletrônicos relacionados a diagnóstico elétrico">
+        <div>
+            <span>⚡</span>
+            <h3>Auto Elétrica</h3>
+            <p>Acompanhe diagnósticos, reparos elétricos e prazos.</p>
+        </div>
+    </article>
+    <article>
+        <img src="https://images.unsplash.com/photo-1503376780353-7e6692767b70?auto=format&fit=crop&w=700&q=80" alt="Centro automotivo moderno com veículo esportivo">
+        <div>
+            <span>🔧</span>
+            <h3>Centro Automotivo</h3>
+            <p>Una boxes, financeiro, atendimento e O.S em um painel.</p>
+        </div>
+    </article>
+</section>
+
+<section class="public-social-proof">
+    <p class="public-eyebrow">Prova social</p>
+    <h2>Em breve: oficinas utilizando o sistema em todo o Brasil.</h2>
+    <p>Este espaço está preparado para destacar depoimentos, histórias de clientes e resultados reais de oficinas, moto centers, auto elétricas e centros automotivos.</p>
 </section>
 
 <section class="public-cta">

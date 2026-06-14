@@ -25,6 +25,7 @@ from .forms import (
     BoxBlockForm,
     BookingForm,
     BookingDurationUpdateForm,
+    OficinaProfileForm,
     OficinaSignupForm,
     OrdemServicoStatusForm,
     OrdemServicoServiceItemForm,
@@ -427,6 +428,44 @@ class StaffRequiredMixin(LoginRequiredMixin, UserPassesTestMixin):
     @property
     def oficina(self):
         return self._ensure_user_oficina()
+
+
+class MinhaOficinaView(StaffRequiredMixin, TemplateView):
+    template_name = 'agenda/minha_oficina.html'
+
+    def get_form(self):
+        return OficinaProfileForm(
+            self.request.POST or None,
+            self.request.FILES or None,
+            instance=self.oficina,
+        )
+
+    def post(self, request, *args, **kwargs):
+        form = self.get_form()
+        if form.is_valid():
+            form.save()
+            messages.success(request, 'Dados da oficina atualizados com sucesso.')
+            return redirect('agenda:minha_oficina')
+
+        messages.error(request, 'Nao foi possivel atualizar a oficina. Verifique os campos informados.')
+        return self.render_to_response(self.get_context_data(form=form))
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        form = kwargs.get('form') or self.get_form()
+        assinatura = self.oficina.ensure_assinatura()
+        assinatura.refresh_status()
+        public_booking_url = self.request.build_absolute_uri(
+            reverse('agenda:public_booking', kwargs={'slug': self.oficina.slug})
+        )
+        context.update({
+            'form': form,
+            'oficina': self.oficina,
+            'assinatura': assinatura,
+            'public_booking_url': public_booking_url,
+            'boxes_count': Booking.box_count_for_oficina(self.oficina),
+        })
+        return context
 
 
 class BookingCreateView(FormView):

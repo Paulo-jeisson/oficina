@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Oficina Online | Sistema SaaS para oficinas</title>
+    <title>Oficina Online | Sistema para oficinas e centros automotivos</title>
     <link rel="stylesheet" href="{% static 'agenda/styles.css' %}?v=20260608-contrast2">
     <meta name="theme-color" content="#0b0d12">
 </head>
@@ -24,6 +24,7 @@
                     <a href="{% url 'agenda:public_booking' request.oficina.slug %}">Agendar serviço</a>
                     <a href="{% url 'agenda:dashboard' %}">Painel da oficina</a>
                     <a href="{% url 'agenda:boxes_panel' %}">Painel de Boxes</a>
+                    <a href="{% url 'agenda:minha_oficina' %}">Minha Oficina</a>
                     <a href="{% url 'agenda:finance_dashboard' %}">Financeiro</a>
                     <a href="{% url 'agenda:os_list' %}">Ordens de Serviço</a>
                     <a href="{% url 'agenda:subscription_detail' %}">Minha assinatura</a>

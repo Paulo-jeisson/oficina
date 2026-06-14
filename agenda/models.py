@@ -90,9 +90,12 @@ class Oficina(models.Model):
     documento = models.CharField('CPF/CNPJ', max_length=20, blank=True)
     email = models.EmailField('E-mail comercial', blank=True)
     telefone = models.CharField('Telefone/WhatsApp', max_length=25, blank=True)
+    whatsapp = models.CharField('WhatsApp', max_length=25, blank=True)
     endereco = models.CharField('Endereco', max_length=180, blank=True)
     cidade = models.CharField('Cidade', max_length=80, blank=True)
     estado = models.CharField('Estado', max_length=2, blank=True)
+    cep = models.CharField('CEP', max_length=12, blank=True)
+    descricao = models.TextField('Descricao', blank=True)
     dono = models.OneToOneField(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,

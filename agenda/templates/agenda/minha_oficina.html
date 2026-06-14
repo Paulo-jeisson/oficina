@@ -1,0 +1,135 @@
+{% extends 'agenda/base.html' %}
+{% block content %}
+<section class="dashboard-overview minha-oficina-page">
+    <div class="dashboard-head">
+        <div>
+            <p class="eyebrow">Minha Oficina</p>
+            <h1>Dados da oficina</h1>
+            <p>Atualize as informações públicas e a capacidade operacional da sua oficina.</p>
+        </div>
+        <div class="panel-actions">
+            <a class="btn btn-secondary" href="{% url 'agenda:dashboard' %}">Voltar ao painel</a>
+        </div>
+    </div>
+
+    <section class="oficina-summary-grid">
+        <article class="summary-card oficina-summary-card">
+            <h3>Nome da oficina</h3>
+            <p>{{ oficina.nome }}</p>
+        </article>
+        <article class="summary-card oficina-summary-card">
+            <h3>Plano atual</h3>
+            <p>Oficina Online</p>
+        </article>
+        <article class="summary-card oficina-summary-card">
+            <h3>Status da assinatura</h3>
+            <p>{{ assinatura.get_status_display }}</p>
+        </article>
+        <article class="summary-card oficina-summary-card">
+            <h3>Quantidade de boxes</h3>
+            <p>{{ boxes_count }}</p>
+        </article>
+    </section>
+
+    <section class="public-link-panel">
+        <div>
+            <p class="eyebrow">Link publico de agendamento</p>
+            <h2>Compartilhe com seus clientes</h2>
+        </div>
+        <div class="public-link-copy">
+            <input id="myOfficePublicBookingUrl" type="text" value="{{ public_booking_url }}" readonly>
+            <button class="btn btn-primary" type="button" data-copy-target="#myOfficePublicBookingUrl">Copiar link</button>
+        </div>
+    </section>
+
+    <form class="oficina-form" method="post" enctype="multipart/form-data" novalidate>
+        {% csrf_token %}
+
+        <section class="table-card oficina-form-section">
+            <div>
+                <p class="eyebrow">Dados da Oficina</p>
+                <h2>Informações básicas</h2>
+            </div>
+
+            <div class="oficina-form-grid">
+                <div class="field-group">
+                    <label for="{{ form.nome.id_for_label }}">Nome da oficina</label>
+                    {{ form.nome }}
+                    {{ form.nome.errors }}
+                </div>
+                <div class="field-group">
+                    <label for="{{ form.logo.id_for_label }}">Logo</label>
+                    {{ form.logo }}
+                    {{ form.logo.errors }}
+                </div>
+                <div class="field-group">
+                    <label for="{{ form.telefone.id_for_label }}">Telefone</label>
+                    {{ form.telefone }}
+                    {{ form.telefone.errors }}
+                </div>
+                <div class="field-group">
+                    <label for="{{ form.whatsapp.id_for_label }}">WhatsApp</label>
+                    {{ form.whatsapp }}
+                    {{ form.whatsapp.errors }}
+                </div>
+                <div class="field-group">
+                    <label for="{{ form.email.id_for_label }}">E-mail</label>
+                    {{ form.email }}
+                    {{ form.email.errors }}
+                </div>
+                <div class="field-group">
+                    <label for="{{ form.cep.id_for_label }}">CEP</label>
+                    {{ form.cep }}
+                    {{ form.cep.errors }}
+                </div>
+                <div class="field-group oficina-span-2">
+                    <label for="{{ form.endereco.id_for_label }}">Endereço</label>
+                    {{ form.endereco }}
+                    {{ form.endereco.errors }}
+                </div>
+                <div class="field-group">
+                    <label for="{{ form.cidade.id_for_label }}">Cidade</label>
+                    {{ form.cidade }}
+                    {{ form.cidade.errors }}
+                </div>
+                <div class="field-group">
+                    <label for="{{ form.estado.id_for_label }}">Estado</label>
+                    {{ form.estado }}
+                    {{ form.estado.errors }}
+                </div>
+                <div class="field-group oficina-span-2">
+                    <label for="{{ form.descricao.id_for_label }}">Descrição</label>
+                    {{ form.descricao }}
+                    {{ form.descricao.errors }}
+                </div>
+            </div>
+        </section>
+
+        <section class="table-card oficina-form-section">
+            <div>
+                <p class="eyebrow">Capacidade da Oficina</p>
+                <h2>Operação</h2>
+                <p>Boxes atuais: {{ boxes_count }}</p>
+            </div>
+
+            <div class="oficina-form-grid">
+                <div class="field-group">
+                    <label for="{{ form.business_type.id_for_label }}">Tipo de negócio</label>
+                    {{ form.business_type }}
+                    {{ form.business_type.errors }}
+                </div>
+                <div class="field-group">
+                    <label for="{{ form.mechanic_count.id_for_label }}">Quantidade de mecânicos/boxes</label>
+                    {{ form.mechanic_count }}
+                    {{ form.mechanic_count.errors }}
+                </div>
+            </div>
+        </section>
+
+        <div class="panel-actions">
+            <button class="btn btn-primary" type="submit">Salvar alterações</button>
+            <a class="btn btn-secondary" href="{% url 'agenda:dashboard' %}">Cancelar</a>
+        </div>
+    </form>
+</section>
+{% endblock %}

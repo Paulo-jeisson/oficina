@@ -34,7 +34,7 @@ def build_booking_owner_message(booking):
 
 
 def build_booking_owner_whatsapp_url(booking):
-    phone = normalize_phone(getattr(booking.oficina, 'telefone', ''))
+    phone = normalize_phone(getattr(booking.oficina, 'whatsapp', '') or getattr(booking.oficina, 'telefone', ''))
     if not phone:
         return ''
 

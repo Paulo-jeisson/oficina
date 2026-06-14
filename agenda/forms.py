@@ -2,6 +2,7 @@ from datetime import date, datetime
 from django import forms
 from django.contrib.auth.forms import UserCreationForm
 from django.contrib.auth.models import User
+from django.db.models import Max
 from django.utils.translation import gettext_lazy as _
 from .models import (
     BoxBlock,
@@ -16,6 +17,7 @@ from .models import (
     OrdemServicoPartItem,
     OrdemServico,
 )
+from .whatsapp import normalize_phone
 
 
 class OficinaSignupForm(UserCreationForm):
@@ -60,6 +62,7 @@ class OficinaSignupForm(UserCreationForm):
                 documento=self.cleaned_data.get('documento', ''),
                 email=self.cleaned_data.get('email', ''),
                 telefone=self.cleaned_data.get('telefone', ''),
+                whatsapp=self.cleaned_data.get('telefone', ''),
                 endereco=self.cleaned_data.get('endereco', ''),
                 cidade=self.cleaned_data.get('cidade', ''),
                 estado=self.cleaned_data.get('estado', '').upper(),
@@ -68,6 +71,69 @@ class OficinaSignupForm(UserCreationForm):
             )
             oficina.ensure_assinatura()
         return user
+
+
+class OficinaProfileForm(forms.ModelForm):
+    class Meta:
+        model = Oficina
+        fields = [
+            'nome',
+            'logo',
+            'telefone',
+            'whatsapp',
+            'email',
+            'endereco',
+            'cidade',
+            'estado',
+            'cep',
+            'descricao',
+            'business_type',
+            'mechanic_count',
+        ]
+        widgets = {
+            'descricao': forms.Textarea(attrs={'rows': 4}),
+            'mechanic_count': forms.NumberInput(attrs={'min': 1}),
+        }
+        labels = {
+            'nome': 'Nome da oficina',
+            'business_type': 'Tipo de negócio',
+            'mechanic_count': 'Quantidade de mecânicos/boxes',
+        }
+
+    def clean_telefone(self):
+        telefone = self.cleaned_data.get('telefone', '')
+        if telefone and not normalize_phone(telefone):
+            raise forms.ValidationError('Informe um telefone valido com DDD.')
+        return telefone
+
+    def clean_whatsapp(self):
+        whatsapp = self.cleaned_data.get('whatsapp', '')
+        if whatsapp and not normalize_phone(whatsapp):
+            raise forms.ValidationError('Informe um WhatsApp valido com DDD.')
+        return whatsapp
+
+    def clean_estado(self):
+        return (self.cleaned_data.get('estado') or '').upper()
+
+    def clean_mechanic_count(self):
+        mechanic_count = self.cleaned_data['mechanic_count']
+        if self.instance and self.instance.pk:
+            max_booking_box = Booking.objects.filter(
+                oficina=self.instance,
+            ).exclude(status=Booking.Status.CANCELED).aggregate(
+                max_box=Max('assigned_box')
+            )['max_box'] or 0
+            max_block_box = BoxBlock.objects.filter(
+                oficina=self.instance,
+            ).aggregate(
+                max_box=Max('box_number')
+            )['max_box'] or 0
+            minimum_boxes = max(max_booking_box, max_block_box, 1)
+            if mechanic_count < minimum_boxes:
+                raise forms.ValidationError(
+                    f'Nao e possivel reduzir para {mechanic_count}. Existem registros usando o Box {minimum_boxes}.'
+                )
+        return mechanic_count
 
 
 class AssinaturaPaymentForm(forms.Form):

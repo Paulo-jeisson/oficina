@@ -1197,6 +1197,73 @@ textarea {
   grid-column: 1 / -1;
 }
 
+.minha-oficina-page {
+  gap: 1.5rem;
+}
+
+.oficina-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(180px, 1fr));
+  gap: 1rem;
+}
+
+.oficina-summary-card p {
+  font-size: 1.3rem;
+}
+
+.oficina-form {
+  display: grid;
+  gap: 1rem;
+}
+
+.oficina-form-section {
+  display: grid;
+  gap: 1rem;
+}
+
+.oficina-form-section > div > p:not(.eyebrow) {
+  margin: 0.35rem 0 0;
+  color: var(--muted);
+}
+
+.oficina-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.oficina-form-grid .field-group {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.oficina-form-grid input,
+.oficina-form-grid select,
+.oficina-form-grid textarea {
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-strong);
+  color: var(--text);
+  padding: 0.75rem;
+}
+
+.oficina-form-grid textarea {
+  resize: vertical;
+}
+
+.oficina-span-2 {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 900px) {
+  .oficina-summary-grid,
+  .oficina-form-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .subscription-page {
   display: grid;
   gap: 1.5rem;
@@ -2257,6 +2324,47 @@ body.public-page .field-error-message {
   font-weight: 700;
 }
 
+.public-hero-media {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(160px, 0.8fr);
+  grid-template-rows: repeat(2, minmax(180px, 1fr));
+  gap: 0.85rem;
+}
+
+.hero-photo {
+  position: relative;
+  overflow: hidden;
+  min-height: 180px;
+  margin: 0;
+  border: 1px solid #d8e2f0;
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: 0 18px 42px rgba(37, 63, 112, 0.14);
+}
+
+.hero-photo-large {
+  grid-row: 1 / -1;
+}
+
+.hero-photo img,
+.public-workshop-grid img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+
+.hero-photo figcaption {
+  position: absolute;
+  left: 0.85rem;
+  bottom: 0.85rem;
+  padding: 0.45rem 0.65rem;
+  border-radius: 8px;
+  background: rgba(16, 34, 61, 0.86);
+  color: #fff;
+  font-weight: 800;
+}
+
 .system-mockup {
   overflow: hidden;
   border: 1px solid #d8e2f0;
@@ -2423,6 +2531,11 @@ body.public-page .field-error-message {
   gap: 1rem;
 }
 
+.public-benefits-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-bottom: 3rem;
+}
+
 .public-feature-card,
 .public-contact-card,
 .public-pricing-card,
@@ -2454,6 +2567,90 @@ body.public-page .field-error-message {
 .public-contact-card h2 {
   margin: 0 0 0.75rem;
   color: #172033;
+}
+
+.public-differentials {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.85rem;
+  margin-bottom: 3rem;
+}
+
+.public-differentials article {
+  padding: 1rem;
+  border: 1px solid #dce5f2;
+  border-radius: 14px;
+  background: #fff;
+  color: #172033;
+  font-weight: 800;
+  box-shadow: 0 12px 28px rgba(37, 63, 112, 0.08);
+}
+
+.public-workshop-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1rem;
+  margin-bottom: 3rem;
+}
+
+.public-workshop-grid article {
+  overflow: hidden;
+  border: 1px solid #dce5f2;
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: 0 16px 40px rgba(37, 63, 112, 0.09);
+}
+
+.public-workshop-grid img {
+  height: 170px;
+}
+
+.public-workshop-grid div {
+  padding: 1.2rem;
+}
+
+.public-workshop-grid span {
+  display: inline-grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  margin-bottom: 0.75rem;
+  border-radius: 10px;
+  background: #edf4ff;
+}
+
+.public-workshop-grid h3 {
+  margin: 0 0 0.5rem;
+  color: #172033;
+}
+
+.public-workshop-grid p {
+  margin: 0;
+  color: #5d6b82;
+  line-height: 1.6;
+}
+
+.public-social-proof {
+  margin-bottom: 1.5rem;
+  padding: 2rem;
+  border: 1px solid #dce5f2;
+  border-radius: 18px;
+  background: #fff;
+  text-align: center;
+  box-shadow: 0 16px 40px rgba(37, 63, 112, 0.09);
+}
+
+.public-social-proof h2 {
+  margin: 0.4rem auto 0.75rem;
+  max-width: 820px;
+  color: #101828;
+}
+
+.public-social-proof p:last-child {
+  max-width: 720px;
+  margin: 0 auto;
+  color: #5d6b82;
+  line-height: 1.7;
 }
 
 .public-cta {
@@ -2534,6 +2731,9 @@ body.public-page .footer-nav a:hover {
   .public-hero,
   .public-card-grid,
   .public-contact-grid,
+  .public-benefits-grid,
+  .public-differentials,
+  .public-workshop-grid,
   .public-stats {
     grid-template-columns: 1fr;
   }
@@ -2545,6 +2745,10 @@ body.public-page .footer-nav a:hover {
 
   .mockup-content {
     grid-template-columns: 1fr;
+  }
+
+  .public-hero-media {
+    grid-template-columns: 1fr 1fr;
   }
 
   .mockup-sidebar {
@@ -2610,6 +2814,20 @@ body.public-page .footer-nav a:hover {
 
   .mockup-summary {
     grid-template-columns: 1fr;
+  }
+
+  .public-hero-media {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto;
+  }
+
+  .hero-photo-large {
+    grid-row: auto;
+  }
+
+  .hero-photo,
+  .public-workshop-grid img {
+    min-height: 210px;
   }
 }
 
