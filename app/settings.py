@@ -87,12 +87,7 @@ TEMPLATES = [
     },
 ]
 
-# WhatsApp / Z-API settings.
-# Keep URLs, tokens and fallback numbers in .env or environment variables.
-WHATSAPP_API_URL = config('WHATSAPP_API_URL', default='')
-WHATSAPP_API_TOKEN = config('WHATSAPP_API_TOKEN', default='')
-WHATSAPP_CLIENT_TOKEN = config('WHATSAPP_CLIENT_TOKEN', default='')
-WHATSAPP_TO_NUMBER = config('WHATSAPP_TO_NUMBER', default='')
+# WhatsApp support link.
 SUPORTE_WHATSAPP = config('SUPORTE_WHATSAPP', default='')
 
 EMAIL_BACKEND = config('EMAIL_BACKEND', default='django.core.mail.backends.smtp.EmailBackend')

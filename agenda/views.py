@@ -22,7 +22,9 @@ from django.db.models import Q, Sum, Count, Avg, F, Case, When, Value, DecimalFi
 from .asaas import AsaasClient, AsaasError
 from .forms import (
     AssinaturaPaymentForm,
+    BoxBlockForm,
     BookingForm,
+    BookingDurationUpdateForm,
     OficinaSignupForm,
     OrdemServicoStatusForm,
     OrdemServicoServiceItemForm,
@@ -31,8 +33,10 @@ from .forms import (
 )
 from .models import (
     Assinatura,
+    BoxBlock,
     Booking,
     BUSINESS_MINUTES,
+    BUSINESS_END,
     ServiceType,
     OrdemServico,
     OrdemServicoStatusHistory,
@@ -43,10 +47,9 @@ from .models import (
     FinanceAudit,
     Oficina,
 )
-from .whatsapp import send_booking_whatsapp
+from .whatsapp import build_booking_owner_whatsapp_url
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
-import threading
 
 logger = logging.getLogger(__name__)
 
@@ -439,15 +442,17 @@ class BookingCreateView(FormView):
     def form_valid(self, form):
         booking = form.save(commit=False)
         booking.oficina = getattr(self.request, 'oficina', None) or form.cleaned_data['oficina']
+        assigned_box = Booking.find_first_available_box(
+            booking.scheduled_date,
+            booking.start_time,
+            booking.duration_minutes,
+            oficina=booking.oficina,
+        )
+        if assigned_box is None:
+            form.add_error('start_time', 'O horario selecionado ja esta ocupado. Escolha outro horario.')
+            return self.form_invalid(form)
+        booking.assigned_box = assigned_box
         booking.save()
-        # Envia notificação de WhatsApp em background (não bloqueia a resposta ao cliente)
-        try:
-            t = threading.Thread(target=send_booking_whatsapp, args=(booking,))
-            t.daemon = True
-            t.start()
-        except Exception:
-            # Não interromper o fluxo de agendamento caso falhe iniciar o thread
-            pass
 
         return super().form_valid(form)
 
@@ -490,13 +495,18 @@ class PublicBookingCreateView(BookingCreateView):
     def form_valid(self, form):
         booking = form.save(commit=False)
         booking.oficina = self.public_oficina
+        assigned_box = Booking.find_first_available_box(
+            booking.scheduled_date,
+            booking.start_time,
+            booking.duration_minutes,
+            oficina=booking.oficina,
+        )
+        if assigned_box is None:
+            form.add_error('start_time', 'O horario selecionado ja esta ocupado. Escolha outro horario.')
+            return self.form_invalid(form)
+        booking.assigned_box = assigned_box
         booking.save()
-        try:
-            t = threading.Thread(target=send_booking_whatsapp, args=(booking,))
-            t.daemon = True
-            t.start()
-        except Exception:
-            pass
+        self.request.session[f'public_booking_success_{self.public_oficina.slug}'] = booking.pk
         return super(BookingCreateView, self).form_valid(form)
 
     def get_context_data(self, **kwargs):
@@ -593,8 +603,17 @@ class PublicBookingSuccessView(TemplateView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
+        booking = self._get_last_public_booking()
         context['oficina'] = self.public_oficina
+        context['booking'] = booking
+        context['owner_whatsapp_url'] = build_booking_owner_whatsapp_url(booking) if booking else ''
         return context
+
+    def _get_last_public_booking(self):
+        booking_id = self.request.session.get(f'public_booking_success_{self.public_oficina.slug}')
+        if not booking_id:
+            return None
+        return Booking.objects.filter(pk=booking_id, oficina=self.public_oficina).first()
 
 
 class OrdemServicoListView(StaffRequiredMixin, TemplateView):
@@ -849,11 +868,12 @@ class DashboardView(StaffRequiredMixin, TemplateView):
         daily_summary = []
         for current_date in calendar_days:
             booked = Booking.booked_minutes_for_date(current_date, oficina=self.oficina)
-            occupancy = round((booked / BUSINESS_MINUTES) * 100) if booked else 0
+            daily_capacity = BUSINESS_MINUTES * Booking.box_count_for_oficina(self.oficina)
+            occupancy = round((booked / daily_capacity) * 100) if booked and daily_capacity else 0
             daily_summary.append({
                 'date': current_date,
                 'booked': booked,
-                'available': max(0, BUSINESS_MINUTES - booked),
+                'available': Booking.available_minutes_for_date(current_date, oficina=self.oficina),
                 'occupancy': occupancy,
                 'intervals': Booking.occupied_intervals_for_date(current_date, oficina=self.oficina),
             })
@@ -890,6 +910,136 @@ class DashboardView(StaffRequiredMixin, TemplateView):
             'selected_schedule': selected_schedule,
             'status_choices': Booking.Status.choices,
             'pending_whatsapp_bookings': self._build_pending_whatsapp_items(),
+        })
+        return context
+
+
+class BoxesPanelView(StaffRequiredMixin, TemplateView):
+    template_name = 'agenda/boxes_panel.html'
+
+    def get_selected_date(self):
+        date_value = self.request.GET.get('date') or self.request.POST.get('selected_date')
+        if date_value:
+            try:
+                return datetime.strptime(date_value, '%Y-%m-%d').date()
+            except (TypeError, ValueError):
+                messages.error(self.request, 'Data invalida. Exibindo atendimentos de hoje.')
+        return timezone.localdate()
+
+    def post(self, request, *args, **kwargs):
+        selected_date = request.POST.get('selected_date') or timezone.localdate().isoformat()
+        redirect_url = f'{reverse("agenda:boxes_panel")}?date={selected_date}'
+        action = request.POST.get('action')
+
+        if action == 'create_block':
+            return self.create_block(request, redirect_url)
+
+        if action == 'delete_block':
+            return self.delete_block(request, redirect_url)
+
+        return self.update_booking_duration(request, redirect_url)
+
+    def create_block(self, request, redirect_url):
+        form = BoxBlockForm(request.POST, oficina=self.oficina)
+        if not form.is_valid():
+            message = self._first_form_error(form) or 'Nao foi possivel bloquear este Box.'
+            messages.error(request, message)
+            return redirect(redirect_url)
+
+        block = form.save(commit=False)
+        block.oficina = self.oficina
+        block.save()
+        messages.success(request, f'{block.box_label} bloqueado com sucesso.')
+        return redirect(redirect_url)
+
+    def delete_block(self, request, redirect_url):
+        block = get_object_or_404(BoxBlock, pk=request.POST.get('block_id'), oficina=self.oficina)
+        box_label = block.box_label
+        block.delete()
+        messages.success(request, f'{box_label} desbloqueado com sucesso.')
+        return redirect(redirect_url)
+
+    def update_booking_duration(self, request, redirect_url):
+        form = BookingDurationUpdateForm(request.POST)
+        if not form.is_valid():
+            messages.error(request, 'Informe uma duracao valida para o atendimento.')
+            return redirect(redirect_url)
+
+        booking = get_object_or_404(
+            Booking,
+            pk=form.cleaned_data['booking_id'],
+            oficina=self.oficina,
+        )
+        new_duration = form.cleaned_data['duration_minutes']
+        new_end_minutes = Booking._time_to_minutes(booking.start_time) + new_duration
+
+        if new_end_minutes > Booking._time_to_minutes(BUSINESS_END):
+            messages.error(request, 'A duracao informada ultrapassa o horario de funcionamento.')
+            return redirect(redirect_url)
+
+        has_conflict = Booking.box_has_conflict(
+            booking.scheduled_date,
+            booking.start_time,
+            new_duration,
+            oficina=self.oficina,
+            assigned_box=booking.assigned_box,
+            exclude_pk=booking.pk,
+        )
+        if has_conflict:
+            messages.error(request, 'Nao foi possivel alterar: a nova duracao invade outro atendimento neste Box.')
+            return redirect(redirect_url)
+
+        booking.duration_minutes = new_duration
+        booking.save(update_fields=['duration_minutes', 'updated_at'])
+        messages.success(request, f'Duracao atualizada para {booking.assigned_box_label}.')
+        return redirect(redirect_url)
+
+    def _first_form_error(self, form):
+        for field_errors in form.errors.values():
+            if field_errors:
+                return field_errors[0]
+        return ''
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        selected_date = self.get_selected_date()
+        bookings = Booking.objects.filter(
+            oficina=self.oficina,
+            scheduled_date=selected_date,
+        ).exclude(status=Booking.Status.CANCELED).order_by('assigned_box', 'start_time', 'full_name')
+
+        bookings_by_box = {box_index: [] for box_index in Booking.box_indexes_for_oficina(self.oficina)}
+        for booking in bookings:
+            if booking.assigned_box not in bookings_by_box:
+                continue
+            bookings_by_box[booking.assigned_box].append(booking)
+
+        active_blocks = BoxBlock.objects.filter(
+            oficina=self.oficina,
+            end_datetime__gte=timezone.now(),
+        ).order_by('start_datetime')
+        blocks_by_box = {box_index: [] for box_index in bookings_by_box}
+        for block in active_blocks:
+            if block.box_number in blocks_by_box:
+                blocks_by_box[block.box_number].append(block)
+
+        boxes = [
+            {
+                'index': box_index,
+                'label': self.oficina.get_box_label(box_index),
+                'bookings': bookings_by_box[box_index],
+                'blocks': blocks_by_box[box_index],
+            }
+            for box_index in bookings_by_box
+        ]
+
+        context.update({
+            'selected_date': selected_date,
+            'selected_date_value': selected_date.isoformat(),
+            'boxes': boxes,
+            'block_form': BoxBlockForm(oficina=self.oficina),
+            'duration_form': BookingDurationUpdateForm(),
+            'duration_choices': BookingDurationUpdateForm.base_fields['duration_minutes'].choices,
         })
         return context
 

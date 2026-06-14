@@ -8,6 +8,7 @@
         </div>
         <div class="panel-actions">
             <a class="btn btn-primary" href="{{ public_booking_url }}" target="_blank" rel="noopener">Abrir link publico</a>
+            <a class="btn btn-secondary" href="{% url 'agenda:boxes_panel' %}">Painel de Boxes</a>
         </div>
     </div>
 
@@ -111,6 +112,7 @@
                 <li>
                     <strong>{{ item.label }}</strong>
                     <span>{{ item.service }} - {{ item.duration }}</span>
+                    <span>{{ item.box }}</span>
                     <span class="schedule-status">{{ item.status }}</span>
                 </li>
                 {% endfor %}
@@ -136,6 +138,7 @@
                             <th>Problema</th>
                             <th>Tempo</th>
                             <th>Data</th>
+                            <th>Box</th>
                             <th>Status</th>
                             <th>OS</th>
                             <th>Deletar</th>
@@ -152,6 +155,7 @@
                             <td>{{ booking.problem_description|truncatechars:40 }}</td>
                             <td>{{ booking.duration_label }}</td>
                             <td>{{ booking.scheduled_date|date:'d/m/Y' }}</td>
+                            <td>{{ booking.assigned_box_label }}</td>
                             <td>{{ booking.status_label }}</td>
                             <td>
                                 {% if booking.has_os %}
@@ -182,7 +186,7 @@
                         </tr>
                         {% empty %}
                         <tr>
-                            <td colspan="11">Nenhum agendamento encontrado.</td>
+                            <td colspan="12">Nenhum agendamento encontrado.</td>
                         </tr>
                         {% endfor %}
                     </tbody>
@@ -218,7 +222,7 @@
                 {% if day.intervals %}
                 <ul class="day-intervals">
                     {% for interval in day.intervals %}
-                    <li>{{ interval.label }} - {{ interval.service }} {{ interval.status }}</li>
+                    <li>{{ interval.label }} - {{ interval.box }} - {{ interval.service }} {{ interval.status }}</li>
                     {% endfor %}
                 </ul>
                 {% endif %}

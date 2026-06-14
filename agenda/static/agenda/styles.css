@@ -1019,6 +1019,184 @@ textarea {
   font-weight: 700;
 }
 
+.boxes-panel-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1rem;
+}
+
+.box-panel {
+  display: grid;
+  gap: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+}
+
+.box-panel-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-start;
+}
+
+.box-panel-header h2 {
+  margin: 0.25rem 0 0;
+}
+
+.box-panel-header span {
+  color: var(--muted);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.box-booking-list {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.box-booking-card {
+  display: grid;
+  gap: 0.85rem;
+  padding: 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  background: rgba(15, 17, 21, 0.64);
+}
+
+.box-booking-main,
+.box-booking-details,
+.box-duration-form {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.box-booking-main span,
+.box-booking-details dt,
+.box-empty {
+  color: var(--muted);
+}
+
+.box-booking-details {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0;
+}
+
+.box-booking-details div {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.box-booking-details dt,
+.box-duration-form label {
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.box-booking-details dd {
+  margin: 0;
+}
+
+.box-duration-form {
+  grid-template-columns: 1fr auto;
+  align-items: end;
+}
+
+.box-duration-form label {
+  grid-column: 1 / -1;
+  color: var(--muted);
+}
+
+.box-duration-form select {
+  min-height: 42px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-strong);
+  color: var(--text);
+  padding: 0 0.75rem;
+}
+
+.box-empty {
+  margin: 0;
+  padding: 1rem;
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  text-align: center;
+}
+
+.box-block-panel {
+  display: grid;
+  gap: 0.85rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}
+
+.box-block-panel h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.box-block-list {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.box-block-item {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.75rem;
+  align-items: center;
+  padding: 0.75rem;
+  border: 1px solid rgba(248, 113, 113, 0.28);
+  border-radius: 12px;
+  background: rgba(127, 29, 29, 0.18);
+}
+
+.box-block-item div {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.box-block-item span {
+  color: var(--muted);
+}
+
+.box-block-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+  align-items: end;
+}
+
+.box-block-form div,
+.box-block-form label {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.box-block-form label {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.box-block-form input {
+  min-height: 42px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-strong);
+  color: var(--text);
+  padding: 0 0.75rem;
+}
+
+.box-block-form .box-block-reason,
+.box-block-form button {
+  grid-column: 1 / -1;
+}
+
 .subscription-page {
   display: grid;
   gap: 1.5rem;

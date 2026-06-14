@@ -5,6 +5,7 @@ from django.conf import settings
 from django.db import models
 from django.urls import reverse
 from django.utils.text import slugify
+from django.core.validators import MinValueValidator
 
 
 class ServiceType(models.TextChoices):
@@ -77,6 +78,12 @@ BOOKING_MIN_LEAD_TIME = timedelta(minutes=30)
 
 
 class Oficina(models.Model):
+    class BusinessType(models.TextChoices):
+        CAR = 'car', 'Mecânica de carro'
+        MOTORCYCLE = 'motorcycle', 'Mecânica de moto'
+        ELECTRICAL = 'electrical', 'Auto elétrica'
+        OTHER = 'other', 'Outra'
+
     nome = models.CharField('Nome da oficina', max_length=120)
     slug = models.SlugField('Slug publico', max_length=140, unique=True, blank=True, null=True)
     logo = models.ImageField('Logo da oficina', upload_to='oficinas/logos/', blank=True, null=True)
@@ -90,6 +97,17 @@ class Oficina(models.Model):
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name='oficina'
+    )
+    business_type = models.CharField(
+        'Tipo de oficina',
+        max_length=20,
+        choices=BusinessType.choices,
+        default=BusinessType.OTHER,
+    )
+    mechanic_count = models.PositiveSmallIntegerField(
+        'Quantidade de boxes',
+        default=1,
+        validators=[MinValueValidator(1)],
     )
     created_at = models.DateTimeField('Criada em', auto_now_add=True)
 
@@ -127,6 +145,9 @@ class Oficina(models.Model):
 
     def get_public_booking_url(self):
         return reverse('agenda:public_booking', kwargs={'slug': self.slug})
+
+    def get_box_label(self, box_index):
+        return f'Box {box_index or 1}'
 
     @property
     def assinatura_atual(self):
@@ -285,6 +306,11 @@ class Booking(OficinaOwnedModel):
     duration_minutes = models.PositiveSmallIntegerField('Tempo estimado (minutos)', choices=DURATION_CHOICES)
     scheduled_date = models.DateField('Data do agendamento')
     start_time = models.TimeField('Horário de início')
+    assigned_box = models.PositiveSmallIntegerField(
+        'Box alocado',
+        default=1,
+        validators=[MinValueValidator(1)],
+    )
     status = models.CharField('Status do serviço', max_length=20, choices=Status.choices, default=Status.SCHEDULED)
     created_at = models.DateTimeField('Criado em', auto_now_add=True)
     updated_at = models.DateTimeField('Atualizado em', auto_now=True)
@@ -312,6 +338,10 @@ class Booking(OficinaOwnedModel):
         return f'{self.start_time.strftime("%H:%M")} - {self.end_time.strftime("%H:%M")}'
 
     @property
+    def assigned_box_label(self) -> str:
+        return f'Box {self.assigned_box or 1}'
+
+    @property
     def status_label(self) -> str:
         return self.get_status_display()
 
@@ -328,10 +358,53 @@ class Booking(OficinaOwnedModel):
         return (datetime.combine(date.today(), time.min) + timedelta(minutes=minutes)).time()
 
     @classmethod
+    def _local_datetime(cls, value):
+        if timezone.is_naive(value):
+            return timezone.make_aware(value, timezone.get_current_timezone())
+        return value
+
+    @classmethod
+    def datetime_range_for(cls, scheduled_date, start_time, duration_minutes):
+        start = cls._local_datetime(datetime.combine(scheduled_date, start_time))
+        end = start + timedelta(minutes=duration_minutes)
+        return start, end
+
+    @classmethod
     def _daily_intervals(cls, scheduled_date, oficina=None):
         bookings = cls.objects.filter(scheduled_date=scheduled_date).exclude(status=cls.Status.CANCELED)
         if oficina is not None:
             bookings = bookings.filter(oficina=oficina)
+        return sorted(
+            (
+                cls._time_to_minutes(booking.start_time),
+                cls._time_to_minutes(booking.end_time),
+            )
+            for booking in bookings
+        )
+
+    @classmethod
+    def box_count_for_oficina(cls, oficina=None):
+        if oficina is None:
+            return 1
+        try:
+            return max(int(oficina.mechanic_count or 1), 1)
+        except (TypeError, ValueError):
+            return 1
+
+    @classmethod
+    def box_indexes_for_oficina(cls, oficina=None):
+        return range(1, cls.box_count_for_oficina(oficina) + 1)
+
+    @classmethod
+    def _daily_intervals_for_box(cls, scheduled_date, oficina, assigned_box, exclude_pk=None):
+        bookings = cls.objects.filter(
+            scheduled_date=scheduled_date,
+            assigned_box=assigned_box,
+        ).exclude(status=cls.Status.CANCELED)
+        if oficina is not None:
+            bookings = bookings.filter(oficina=oficina)
+        if exclude_pk:
+            bookings = bookings.exclude(pk=exclude_pk)
         return sorted(
             (
                 cls._time_to_minutes(booking.start_time),
@@ -353,16 +426,81 @@ class Booking(OficinaOwnedModel):
 
     @classmethod
     def available_minutes_for_date(cls, scheduled_date, oficina=None):
-        return max(0, BUSINESS_MINUTES - cls.booked_minutes_for_date(scheduled_date, oficina=oficina))
+        total_capacity = BUSINESS_MINUTES * cls.box_count_for_oficina(oficina)
+        return max(0, total_capacity - cls.booked_minutes_for_date(scheduled_date, oficina=oficina))
 
     @classmethod
-    def overlaps(cls, scheduled_date, start_time, duration_minutes, oficina=None):
+    def box_has_conflict(cls, scheduled_date, start_time, duration_minutes, oficina=None, assigned_box=1, exclude_pk=None):
         start = cls._time_to_minutes(start_time)
         end = start + duration_minutes
-        for current_start, current_end in cls._daily_intervals(scheduled_date, oficina=oficina):
+        for current_start, current_end in cls._daily_intervals_for_box(
+            scheduled_date,
+            oficina,
+            assigned_box,
+            exclude_pk=exclude_pk,
+        ):
             if start < current_end and end > current_start:
                 return True
         return False
+
+    @classmethod
+    def box_is_blocked(cls, scheduled_date, start_time, duration_minutes, oficina=None, assigned_box=1, exclude_block_pk=None):
+        start_dt, end_dt = cls.datetime_range_for(scheduled_date, start_time, duration_minutes)
+        blocks = BoxBlock.objects.filter(
+            box_number=assigned_box,
+            start_datetime__lt=end_dt,
+            end_datetime__gt=start_dt,
+        )
+        if oficina is not None:
+            blocks = blocks.filter(oficina=oficina)
+        if exclude_block_pk:
+            blocks = blocks.exclude(pk=exclude_block_pk)
+        return blocks.exists()
+
+    @classmethod
+    def available_boxes_for(cls, scheduled_date, start_time, duration_minutes, oficina=None, exclude_pk=None):
+        return [
+            box_index
+            for box_index in cls.box_indexes_for_oficina(oficina)
+            if not cls.box_has_conflict(
+                scheduled_date,
+                start_time,
+                duration_minutes,
+                oficina=oficina,
+                assigned_box=box_index,
+                exclude_pk=exclude_pk,
+            )
+            and not cls.box_is_blocked(
+                scheduled_date,
+                start_time,
+                duration_minutes,
+                oficina=oficina,
+                assigned_box=box_index,
+            )
+        ]
+
+    @classmethod
+    def find_first_available_box(cls, scheduled_date, start_time, duration_minutes, oficina=None, exclude_pk=None):
+        boxes = cls.available_boxes_for(
+            scheduled_date,
+            start_time,
+            duration_minutes,
+            oficina=oficina,
+            exclude_pk=exclude_pk,
+        )
+        return boxes[0] if boxes else None
+
+    @classmethod
+    def overlaps(cls, scheduled_date, start_time, duration_minutes, oficina=None, assigned_box=None):
+        if assigned_box is not None:
+            return cls.box_has_conflict(
+                scheduled_date,
+                start_time,
+                duration_minutes,
+                oficina=oficina,
+                assigned_box=assigned_box,
+            )
+        return cls.find_first_available_box(scheduled_date, start_time, duration_minutes, oficina=oficina) is None
 
     @classmethod
     def minimum_start_minutes_for_date(cls, scheduled_date):
@@ -401,7 +539,7 @@ class Booking(OficinaOwnedModel):
             candidate_time = cls._minutes_to_time(candidate)
             if candidate_time in LUNCH_BLOCKED_START_TIMES:
                 continue
-            if not cls.overlaps(scheduled_date, candidate_time, duration_minutes, oficina=oficina):
+            if cls.find_first_available_box(scheduled_date, candidate_time, duration_minutes, oficina=oficina):
                 result.append(candidate_time)
         return result
 
@@ -424,6 +562,7 @@ class Booking(OficinaOwnedModel):
                 'duration': booking.duration_label,
                 'customer': booking.full_name,
                 'status': booking.status_label,
+                'box': booking.assigned_box_label,
             }
             for booking in bookings
         ]
@@ -440,6 +579,88 @@ class Booking(OficinaOwnedModel):
 
     def get_absolute_url(self):
         return reverse('agenda:booking_success')
+
+
+class BoxBlock(OficinaOwnedModel):
+    box_number = models.PositiveSmallIntegerField(
+        'Box',
+        validators=[MinValueValidator(1)],
+    )
+    start_datetime = models.DateTimeField('Inicio do bloqueio')
+    end_datetime = models.DateTimeField('Fim do bloqueio')
+    reason = models.CharField('Motivo', max_length=180, blank=True)
+    created_at = models.DateTimeField('Criado em', auto_now_add=True)
+    updated_at = models.DateTimeField('Atualizado em', auto_now=True)
+
+    class Meta:
+        ordering = ['start_datetime', 'box_number']
+        verbose_name = 'Bloqueio de Box'
+        verbose_name_plural = 'Bloqueios de Box'
+
+    def __str__(self):
+        return f'{self.oficina} - {self.box_label} ({self.start_datetime:%d/%m/%Y %H:%M})'
+
+    @property
+    def box_label(self):
+        return f'Box {self.box_number or 1}'
+
+    @property
+    def time_range_label(self):
+        return f'{timezone.localtime(self.start_datetime).strftime("%d/%m/%Y %H:%M")} - {timezone.localtime(self.end_datetime).strftime("%d/%m/%Y %H:%M")}'
+
+    @staticmethod
+    def ranges_overlap(start_a, end_a, start_b, end_b):
+        return start_a < end_b and end_a > start_b
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+
+        errors = {}
+        if self.start_datetime and timezone.is_naive(self.start_datetime):
+            self.start_datetime = timezone.make_aware(self.start_datetime, timezone.get_current_timezone())
+        if self.end_datetime and timezone.is_naive(self.end_datetime):
+            self.end_datetime = timezone.make_aware(self.end_datetime, timezone.get_current_timezone())
+
+        if self.start_datetime and self.end_datetime and self.end_datetime <= self.start_datetime:
+            errors['end_datetime'] = 'A data/hora final deve ser maior que a inicial.'
+
+        oficina = getattr(self, 'oficina', None)
+        if self.oficina_id or oficina:
+            max_boxes = Booking.box_count_for_oficina(oficina)
+            if self.box_number and self.box_number > max_boxes:
+                errors['box_number'] = f'Escolha um Box entre 1 e {max_boxes}.'
+
+        if not errors and self.start_datetime and self.end_datetime and self.box_number and oficina:
+            conflicting_blocks = BoxBlock.objects.filter(
+                oficina=oficina,
+                box_number=self.box_number,
+                start_datetime__lt=self.end_datetime,
+                end_datetime__gt=self.start_datetime,
+            )
+            if self.pk:
+                conflicting_blocks = conflicting_blocks.exclude(pk=self.pk)
+            if conflicting_blocks.exists():
+                errors['start_datetime'] = 'Ja existe um bloqueio neste Box para o periodo informado.'
+
+            date_start = timezone.localtime(self.start_datetime).date()
+            date_end = timezone.localtime(self.end_datetime).date()
+            bookings = Booking.objects.filter(
+                oficina=oficina,
+                assigned_box=self.box_number,
+                scheduled_date__range=(date_start, date_end),
+            ).exclude(status=Booking.Status.CANCELED)
+            for booking in bookings:
+                booking_start, booking_end = Booking.datetime_range_for(
+                    booking.scheduled_date,
+                    booking.start_time,
+                    booking.duration_minutes,
+                )
+                if self.ranges_overlap(self.start_datetime, self.end_datetime, booking_start, booking_end):
+                    errors['start_datetime'] = 'Este bloqueio invade um agendamento existente neste Box.'
+                    break
+
+        if errors:
+            raise ValidationError(errors)
 
 
 class WhatsAppMessage(OficinaOwnedModel):

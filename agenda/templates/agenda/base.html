@@ -23,6 +23,7 @@
                 {% if user.is_authenticated %}
                     <a href="{% url 'agenda:public_booking' request.oficina.slug %}">Agendar serviço</a>
                     <a href="{% url 'agenda:dashboard' %}">Painel da oficina</a>
+                    <a href="{% url 'agenda:boxes_panel' %}">Painel de Boxes</a>
                     <a href="{% url 'agenda:finance_dashboard' %}">Financeiro</a>
                     <a href="{% url 'agenda:os_list' %}">Ordens de Serviço</a>
                     <a href="{% url 'agenda:subscription_detail' %}">Minha assinatura</a>

@@ -4,13 +4,13 @@ from django.contrib.auth.forms import UserCreationForm
 from django.contrib.auth.models import User
 from django.utils.translation import gettext_lazy as _
 from .models import (
+    BoxBlock,
     Booking,
     Oficina,
     ServiceType,
     DURATION_CHOICES,
     BUSINESS_START,
     BUSINESS_END,
-    BUSINESS_MINUTES,
     LUNCH_BLOCKED_START_TIMES,
     OrdemServicoServiceItem,
     OrdemServicoPartItem,
@@ -31,6 +31,17 @@ class OficinaSignupForm(UserCreationForm):
     endereco = forms.CharField(label='Endereco', max_length=180, required=False)
     cidade = forms.CharField(label='Cidade', max_length=80, required=False)
     estado = forms.CharField(label='Estado', max_length=2, required=False)
+    business_type = forms.ChoiceField(
+        label='Tipo de oficina',
+        choices=Oficina.BusinessType.choices,
+        initial=Oficina.BusinessType.OTHER,
+    )
+    mechanic_count = forms.IntegerField(
+        label='Quantidade de boxes',
+        min_value=1,
+        initial=1,
+        widget=forms.NumberInput(attrs={'min': 1}),
+    )
 
     class Meta(UserCreationForm.Meta):
         model = User
@@ -52,6 +63,8 @@ class OficinaSignupForm(UserCreationForm):
                 endereco=self.cleaned_data.get('endereco', ''),
                 cidade=self.cleaned_data.get('cidade', ''),
                 estado=self.cleaned_data.get('estado', '').upper(),
+                business_type=self.cleaned_data.get('business_type') or Oficina.BusinessType.OTHER,
+                mechanic_count=self.cleaned_data.get('mechanic_count') or 1,
             )
             oficina.ensure_assinatura()
         return user
@@ -66,6 +79,87 @@ class AssinaturaPaymentForm(forms.Form):
         ),
         widget=forms.Select(attrs={'class': 'form-input'})
     )
+
+
+BOX_PANEL_DURATION_CHOICES = [
+    (30, '30 min'),
+    (60, '1h'),
+    (90, '1h30'),
+    (120, '2h'),
+    (180, '3h'),
+]
+
+
+class BookingDurationUpdateForm(forms.Form):
+    booking_id = forms.IntegerField(widget=forms.HiddenInput)
+    selected_date = forms.DateField(required=False, widget=forms.HiddenInput)
+    duration_minutes = forms.TypedChoiceField(
+        label='Duração',
+        coerce=int,
+        choices=BOX_PANEL_DURATION_CHOICES,
+        widget=forms.Select(attrs={'class': 'form-input'})
+    )
+
+
+class BoxBlockForm(forms.ModelForm):
+    start_datetime = forms.DateTimeField(
+        label='Inicio',
+        input_formats=['%Y-%m-%dT%H:%M'],
+        widget=forms.DateTimeInput(attrs={'type': 'datetime-local'}),
+    )
+    end_datetime = forms.DateTimeField(
+        label='Fim',
+        input_formats=['%Y-%m-%dT%H:%M'],
+        widget=forms.DateTimeInput(attrs={'type': 'datetime-local'}),
+    )
+
+    class Meta:
+        model = BoxBlock
+        fields = ['box_number', 'start_datetime', 'end_datetime', 'reason']
+        widgets = {
+            'box_number': forms.HiddenInput(),
+            'reason': forms.TextInput(attrs={'placeholder': 'Motivo do bloqueio'}),
+        }
+        labels = {
+            'start_datetime': 'Inicio',
+            'end_datetime': 'Fim',
+            'reason': 'Motivo',
+        }
+
+    def __init__(self, *args, **kwargs):
+        self.oficina = kwargs.pop('oficina', None)
+        super().__init__(*args, **kwargs)
+        if self.oficina is not None:
+            self.instance.oficina = self.oficina
+
+    def clean_box_number(self):
+        box_number = self.cleaned_data['box_number']
+        if self.oficina and box_number not in Booking.box_indexes_for_oficina(self.oficina):
+            raise forms.ValidationError(f'Escolha um Box entre 1 e {self.oficina.mechanic_count}.')
+        return box_number
+
+    def clean(self):
+        cleaned = super().clean()
+        if self.errors or self.oficina is None:
+            return cleaned
+
+        block = BoxBlock(
+            oficina=self.oficina,
+            box_number=cleaned.get('box_number'),
+            start_datetime=cleaned.get('start_datetime'),
+            end_datetime=cleaned.get('end_datetime'),
+            reason=cleaned.get('reason', ''),
+        )
+        try:
+            block.clean()
+        except forms.ValidationError as exc:
+            if hasattr(exc, 'error_dict'):
+                for field, errors in exc.error_dict.items():
+                    for error in errors:
+                        self.add_error(field, error)
+            else:
+                self.add_error(None, exc)
+        return cleaned
 
 
 class BookingForm(forms.ModelForm):
@@ -129,6 +223,7 @@ class BookingForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         self.oficina = kwargs.pop('oficina', None)
+        self.assigned_box = None
         super().__init__(*args, **kwargs)
         if self.oficina is not None:
             self.fields.pop('oficina', None)
@@ -202,7 +297,7 @@ class BookingForm(forms.ModelForm):
                 return cleaned
 
         if scheduled_date and duration_minutes and start_time and selected_oficina:
-            if Booking.booked_minutes_for_date(scheduled_date, oficina=selected_oficina) + duration_minutes > BUSINESS_MINUTES:
+            if Booking.available_minutes_for_date(scheduled_date, oficina=selected_oficina) < duration_minutes:
                 self.add_error('scheduled_date', _('O limite de 10 horas para este dia foi atingido. Escolha outra data.'))
 
             if cleaned['start_time'] < BUSINESS_START:
@@ -218,8 +313,16 @@ class BookingForm(forms.ModelForm):
             if end_minutes > Booking._time_to_minutes(BUSINESS_END):
                 self.add_error('start_time', _('Este serviço ultrapassa o horário de funcionamento (até 17:00).'))
 
-            if Booking.overlaps(scheduled_date, cleaned['start_time'], duration_minutes, oficina=selected_oficina):
+            available_box = Booking.find_first_available_box(
+                scheduled_date,
+                cleaned['start_time'],
+                duration_minutes,
+                oficina=selected_oficina,
+            )
+            if available_box is None:
                 self.add_error('start_time', _('O horário selecionado já está ocupado. Escolha outro horário.'))
+            else:
+                self.assigned_box = available_box
 
         return cleaned
 

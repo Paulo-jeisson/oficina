@@ -1,5 +1,6 @@
 from django.contrib import admin
 from .models import (
+    BoxBlock,
     Booking,
     Assinatura,
     Oficina,
@@ -34,7 +35,8 @@ class AssinaturaInline(admin.StackedInline):
 
 @admin.register(Oficina)
 class OficinaAdmin(admin.ModelAdmin):
-    list_display = ('nome', 'email', 'telefone', 'dono', 'created_at')
+    list_display = ('nome', 'business_type', 'mechanic_count', 'email', 'telefone', 'dono', 'created_at')
+    list_filter = ('business_type', 'mechanic_count')
     search_fields = ('nome', 'email', 'telefone', 'documento', 'dono__username', 'dono__email')
     readonly_fields = ('created_at',)
     inlines = [AssinaturaInline]
@@ -64,11 +66,24 @@ class BookingAdmin(admin.ModelAdmin):
         'vehicle_year',
         'scheduled_date',
         'start_time',
+        'box_label',
         'duration_minutes',
         'status',
     )
-    list_filter = ('oficina', 'status', 'scheduled_date', 'service_type')
+    list_filter = ('oficina', 'status', 'scheduled_date', 'service_type', 'assigned_box')
     search_fields = ('full_name', 'phone', 'vehicle_brand', 'vehicle_model')
+    readonly_fields = ('created_at', 'updated_at')
+
+    @admin.display(description='Box')
+    def box_label(self, obj):
+        return obj.assigned_box_label
+
+
+@admin.register(BoxBlock)
+class BoxBlockAdmin(admin.ModelAdmin):
+    list_display = ('oficina', 'box_number', 'start_datetime', 'end_datetime', 'reason', 'created_at')
+    list_filter = ('oficina', 'box_number', 'start_datetime', 'end_datetime')
+    search_fields = ('oficina__nome', 'reason')
     readonly_fields = ('created_at', 'updated_at')
 
 

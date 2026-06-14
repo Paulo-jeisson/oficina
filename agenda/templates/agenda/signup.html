@@ -49,6 +49,16 @@
                 {{ form.estado }}
             </div>
             <div class="field-group">
+                <label for="{{ form.business_type.id_for_label }}">Tipo de oficina</label>
+                {{ form.business_type }}
+                {{ form.business_type.errors }}
+            </div>
+            <div class="field-group">
+                <label for="{{ form.mechanic_count.id_for_label }}">Quantidade de boxes</label>
+                {{ form.mechanic_count }}
+                {{ form.mechanic_count.errors }}
+            </div>
+            <div class="field-group">
                 <label for="{{ form.username.id_for_label }}">Usuario de acesso</label>
                 {{ form.username }}
                 {{ form.username.errors }}

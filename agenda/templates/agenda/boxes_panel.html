@@ -1,0 +1,139 @@
+{% extends 'agenda/base.html' %}
+{% block content %}
+<section class="dashboard-overview">
+    <div class="dashboard-head">
+        <div>
+            <p class="eyebrow">Painel de Boxes</p>
+            <h1>Atendimentos por Box</h1>
+            <p>Acompanhe e ajuste os atendimentos do dia da sua oficina.</p>
+        </div>
+        <div class="panel-actions">
+            <a class="btn btn-secondary" href="{% url 'agenda:dashboard' %}">Voltar ao painel</a>
+        </div>
+    </div>
+
+    <section class="filters-panel">
+        <form class="filters-form" method="get">
+            <div class="filter-field">
+                <label for="id_date">Data</label>
+                <input id="id_date" type="date" name="date" value="{{ selected_date_value }}">
+            </div>
+            <button class="btn btn-primary" type="submit">Ver dia</button>
+            <a class="btn btn-secondary" href="{% url 'agenda:boxes_panel' %}">Hoje</a>
+        </form>
+    </section>
+
+    <section class="boxes-panel-grid">
+        {% for box in boxes %}
+        <article class="box-panel">
+            <div class="box-panel-header">
+                <div>
+                    <p class="eyebrow">{{ selected_date|date:'d/m/Y' }}</p>
+                    <h2>{{ box.label }}</h2>
+                </div>
+                <span>{{ box.bookings|length }} atendimento{{ box.bookings|length|pluralize }}</span>
+            </div>
+
+            {% if box.bookings %}
+            <div class="box-booking-list">
+                {% for booking in box.bookings %}
+                <div class="box-booking-card">
+                    <div class="box-booking-main">
+                        <strong>{{ booking.full_name }}</strong>
+                        <span>{{ booking.phone }}</span>
+                        <span>{{ booking.get_service_type_display }}</span>
+                    </div>
+                    <dl class="box-booking-details">
+                        <div>
+                            <dt>Data</dt>
+                            <dd>{{ booking.scheduled_date|date:'d/m/Y' }}</dd>
+                        </div>
+                        <div>
+                            <dt>Inicio</dt>
+                            <dd>{{ booking.start_time|time:'H:i' }}</dd>
+                        </div>
+                        <div>
+                            <dt>Duracao atual</dt>
+                            <dd>{{ booking.duration_label }}</dd>
+                        </div>
+                        <div>
+                            <dt>Fim</dt>
+                            <dd>{{ booking.end_time|time:'H:i' }}</dd>
+                        </div>
+                        <div>
+                            <dt>Status</dt>
+                            <dd>{{ booking.status_label }}</dd>
+                        </div>
+                    </dl>
+                    <form class="box-duration-form" method="post" action="{% url 'agenda:boxes_panel' %}">
+                        {% csrf_token %}
+                        <input type="hidden" name="booking_id" value="{{ booking.id }}">
+                        <input type="hidden" name="selected_date" value="{{ selected_date_value }}">
+                        <label for="id_duration_{{ booking.id }}">Duração</label>
+                        <select id="id_duration_{{ booking.id }}" name="duration_minutes">
+                            {% for value, label in duration_choices %}
+                                <option value="{{ value }}" {% if booking.duration_minutes == value %}selected{% endif %}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                        <button class="btn btn-tertiary" type="submit">Atualizar</button>
+                    </form>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <p class="box-empty">Nenhum atendimento neste box.</p>
+            {% endif %}
+
+            <div class="box-block-panel">
+                <h3>Bloqueios do Box</h3>
+                {% if box.blocks %}
+                <div class="box-block-list">
+                    {% for block in box.blocks %}
+                    <div class="box-block-item">
+                        <div>
+                            <strong>{{ block.time_range_label }}</strong>
+                            {% if block.reason %}
+                                <span>{{ block.reason }}</span>
+                            {% else %}
+                                <span>Sem motivo informado</span>
+                            {% endif %}
+                        </div>
+                        <form method="post" action="{% url 'agenda:boxes_panel' %}">
+                            {% csrf_token %}
+                            <input type="hidden" name="action" value="delete_block">
+                            <input type="hidden" name="block_id" value="{{ block.id }}">
+                            <input type="hidden" name="selected_date" value="{{ selected_date_value }}">
+                            <button class="btn btn-danger" type="submit">Desbloquear</button>
+                        </form>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p class="box-empty">Nenhum bloqueio ativo ou futuro neste box.</p>
+                {% endif %}
+
+                <form class="box-block-form" method="post" action="{% url 'agenda:boxes_panel' %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="create_block">
+                    <input type="hidden" name="box_number" value="{{ box.index }}">
+                    <input type="hidden" name="selected_date" value="{{ selected_date_value }}">
+                    <div>
+                        <label for="id_block_start_{{ box.index }}">Inicio</label>
+                        <input id="id_block_start_{{ box.index }}" type="datetime-local" name="start_datetime" required>
+                    </div>
+                    <div>
+                        <label for="id_block_end_{{ box.index }}">Fim</label>
+                        <input id="id_block_end_{{ box.index }}" type="datetime-local" name="end_datetime" required>
+                    </div>
+                    <div class="box-block-reason">
+                        <label for="id_block_reason_{{ box.index }}">Motivo</label>
+                        <input id="id_block_reason_{{ box.index }}" type="text" name="reason" maxlength="180" placeholder="Ex: carro em motor">
+                    </div>
+                    <button class="btn btn-secondary" type="submit">Bloquear Box</button>
+                </form>
+            </div>
+        </article>
+        {% endfor %}
+    </section>
+</section>
+{% endblock %}
