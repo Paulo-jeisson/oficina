@@ -17,13 +17,24 @@ Including another URLconf
 from django.contrib import admin
 from django.conf import settings
 from django.conf.urls.static import static
+from django.http import FileResponse
 from django.urls import path, include
 
 # Ensure Django admin is only accessible to superusers
 admin.site.__class__.has_permission = lambda self, request: request.user.is_active and request.user.is_superuser
 
+
+def service_worker(request):
+    response = FileResponse(
+        open(settings.BASE_DIR / 'static' / 'service-worker.js', 'rb'),
+        content_type='application/javascript',
+    )
+    response['Service-Worker-Allowed'] = '/'
+    return response
+
 urlpatterns = [
     path('admin/', admin.site.urls),
+    path('service-worker.js', service_worker, name='service_worker'),
     path('', include('agenda.urls')),
 ]
 
