@@ -3,7 +3,7 @@
   "name": "Gestão Oficina",
   "short_name": "Oficina",
   "description": "Sistema de gestão para oficinas.",
-  "start_url": "/",
+  "start_url": "/app/",
   "scope": "/",
   "display": "standalone",
   "background_color": "#0f1115",

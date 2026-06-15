@@ -1,0 +1,88 @@
+{% extends 'agenda/base.html' %}
+
+{% block content %}
+<section class="app-home">
+    <div class="app-home-head">
+        <div>
+            <p class="eyebrow">Menu Mobile</p>
+            <h1>App da Oficina</h1>
+            <p>{{ oficina.nome }}</p>
+        </div>
+        {% if oficina.logo %}
+            <img class="app-home-logo" src="{{ oficina.logo.url }}" alt="{{ oficina.nome }}">
+        {% else %}
+            <span class="app-home-logo app-home-logo-mark">OO</span>
+        {% endif %}
+    </div>
+
+    <div class="app-card-grid">
+        <a class="app-card app-card-blue" href="{% url 'agenda:dashboard' %}">
+            <span class="app-card-icon" aria-hidden="true">&#128202;</span>
+            <strong>Painel</strong>
+            <small>Visao geral</small>
+        </a>
+
+        <a class="app-card app-card-green" href="{% url 'agenda:public_booking' oficina.slug %}">
+            <span class="app-card-icon" aria-hidden="true">&#128197;</span>
+            <strong>Agendar</strong>
+            <small>Novo servico</small>
+        </a>
+
+        <a class="app-card app-card-orange" href="{% url 'agenda:boxes_panel' %}">
+            <span class="app-card-icon" aria-hidden="true">&#128736;</span>
+            <strong>Boxes</strong>
+            <small>Ocupacao</small>
+        </a>
+
+        <a class="app-card app-card-violet" href="{% url 'agenda:os_list' %}">
+            <span class="app-card-icon" aria-hidden="true">&#128203;</span>
+            <strong>OS</strong>
+            <small>Servicos</small>
+        </a>
+
+        <a class="app-card app-card-teal" href="{% url 'agenda:finance_dashboard' %}">
+            <span class="app-card-icon" aria-hidden="true">&#128176;</span>
+            <strong>Financeiro</strong>
+            <small>Receitas</small>
+        </a>
+
+        <a class="app-card app-card-cyan" href="{% url 'agenda:os_list' %}">
+            <span class="app-card-icon" aria-hidden="true">&#128100;</span>
+            <strong>Clientes</strong>
+            <small>Buscar OS</small>
+        </a>
+
+        <a class="app-card app-card-red" href="{% url 'agenda:os_list' %}">
+            <span class="app-card-icon" aria-hidden="true">&#128663;</span>
+            <strong>Veiculos</strong>
+            <small>Buscar OS</small>
+        </a>
+
+        <a class="app-card app-card-slate" href="{% url 'agenda:minha_oficina' %}">
+            <span class="app-card-icon" aria-hidden="true">&#127970;</span>
+            <strong>Oficina</strong>
+            <small>Perfil</small>
+        </a>
+
+        <a class="app-card app-card-indigo" href="{% url 'agenda:subscription_detail' %}">
+            <span class="app-card-icon" aria-hidden="true">&#128179;</span>
+            <strong>Assinatura</strong>
+            <small>Plano</small>
+        </a>
+
+        {% if support_whatsapp_url %}
+            <a class="app-card app-card-whatsapp" href="{{ support_whatsapp_url }}" target="_blank" rel="noopener noreferrer">
+                <span class="app-card-icon" aria-hidden="true">&#9742;</span>
+                <strong>Suporte</strong>
+                <small>WhatsApp</small>
+            </a>
+        {% else %}
+            <a class="app-card app-card-whatsapp" href="{% url 'agenda:contact' %}">
+                <span class="app-card-icon" aria-hidden="true">&#9742;</span>
+                <strong>Suporte</strong>
+                <small>Contato</small>
+            </a>
+        {% endif %}
+    </div>
+</section>
+{% endblock %}

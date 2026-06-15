@@ -430,6 +430,15 @@ class StaffRequiredMixin(LoginRequiredMixin, UserPassesTestMixin):
         return self._ensure_user_oficina()
 
 
+class AppHomeView(StaffRequiredMixin, TemplateView):
+    template_name = 'agenda/app_home.html'
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['oficina'] = self.oficina
+        return context
+
+
 class MinhaOficinaView(StaffRequiredMixin, TemplateView):
     template_name = 'agenda/minha_oficina.html'
 
