@@ -1,13 +1,34 @@
+from django.conf import settings
 from django.shortcuts import redirect
-from django.urls import reverse
+from django.urls import Resolver404, resolve
 
 from .models import Oficina
 
 
-INTERNAL_PATH_PREFIXES = (
-    '/dashboard/',
-    '/financeiro/',
-    '/os/',
+SUBSCRIPTION_ALLOWED_PATH_NAMES = (
+    'home',
+    'plans',
+    'contact',
+    'signup',
+    'login',
+    'logout',
+    'password_reset',
+    'password_reset_done',
+    'password_reset_confirm',
+    'password_reset_complete',
+    'subscription_blocked',
+    'subscription_pay',
+    'asaas_webhook',
+    'public_booking',
+    'public_booking_success',
+    'available_slots',
+)
+
+SUBSCRIPTION_ALLOWED_PATH_PREFIXES = (
+    '/static/',
+    '/media/',
+    '/webhooks/asaas/',
+    '/oficina/',
 )
 
 
@@ -40,6 +61,20 @@ class OficinaMiddleware:
         return self.get_response(request)
 
     def _should_check_subscription(self, request):
-        if request.path == reverse('agenda:subscription_blocked'):
+        path = request.path_info
+        url_name = ''
+        try:
+            url_name = resolve(path).url_name
+        except Resolver404:
+            url_name = ''
+
+        if settings.STATIC_URL and path.startswith(settings.STATIC_URL):
             return False
-        return any(request.path.startswith(prefix) for prefix in INTERNAL_PATH_PREFIXES)
+        if settings.MEDIA_URL and path.startswith(settings.MEDIA_URL):
+            return False
+        if any(path.startswith(prefix) for prefix in SUBSCRIPTION_ALLOWED_PATH_PREFIXES):
+            return False
+        if url_name in SUBSCRIPTION_ALLOWED_PATH_NAMES:
+            return False
+
+        return True
