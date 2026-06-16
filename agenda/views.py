@@ -1018,9 +1018,9 @@ class BoxesPanelView(StaffRequiredMixin, TemplateView):
             oficina=self.oficina,
         )
         new_duration = form.cleaned_data['duration_minutes']
-        new_end_minutes = Booking._time_to_minutes(booking.start_time) + new_duration
+        new_end_minutes = Booking.calculate_end_minutes(booking.start_time, new_duration)
 
-        if new_end_minutes > Booking._time_to_minutes(BUSINESS_END):
+        if new_end_minutes is None or new_end_minutes > Booking._time_to_minutes(BUSINESS_END):
             messages.error(request, 'A duracao informada ultrapassa o horario de funcionamento.')
             return redirect(redirect_url)
 

@@ -71,6 +71,8 @@ BUSINESS_START = time(7, 0)
 BUSINESS_END = time(17, 0)
 BUSINESS_MINUTES = 600
 SLOT_STEP = 30
+LUNCH_START = time(12, 0)
+LUNCH_END = time(13, 30)
 LUNCH_BLOCKED_START_TIMES = {time(12, 0), time(12, 30), time(13, 0)}
 BOOKING_MIN_LEAD_TIME = timedelta(minutes=30)
 
@@ -326,9 +328,7 @@ class Booking(OficinaOwnedModel):
 
     @property
     def end_time(self) -> time:
-        start = datetime.combine(self.scheduled_date, self.start_time)
-        end = start + timedelta(minutes=self.duration_minutes)
-        return end.time()
+        return self.calculate_end_time(self.start_time, self.duration_minutes)
 
     @property
     def duration_label(self) -> str:
@@ -359,6 +359,49 @@ class Booking(OficinaOwnedModel):
         return (datetime.combine(date.today(), time.min) + timedelta(minutes=minutes)).time()
 
     @classmethod
+    def _lunch_start_minutes(cls) -> int:
+        return cls._time_to_minutes(LUNCH_START)
+
+    @classmethod
+    def _lunch_end_minutes(cls) -> int:
+        return cls._time_to_minutes(LUNCH_END)
+
+    @classmethod
+    def is_lunch_time(cls, value: time) -> bool:
+        value_minutes = cls._time_to_minutes(value)
+        return cls._lunch_start_minutes() <= value_minutes < cls._lunch_end_minutes()
+
+    @classmethod
+    def calculate_end_minutes(cls, start_time, duration_minutes):
+        current = cls._time_to_minutes(start_time)
+        remaining = int(duration_minutes)
+        lunch_start = cls._lunch_start_minutes()
+        lunch_end = cls._lunch_end_minutes()
+
+        if lunch_start <= current < lunch_end:
+            return None
+
+        while remaining > 0:
+            if current < lunch_start:
+                work_until = min(lunch_start, current + remaining)
+                remaining -= work_until - current
+                current = work_until
+                if current == lunch_start and remaining > 0:
+                    current = lunch_end
+            else:
+                current += remaining
+                remaining = 0
+
+        return current
+
+    @classmethod
+    def calculate_end_time(cls, start_time, duration_minutes):
+        end_minutes = cls.calculate_end_minutes(start_time, duration_minutes)
+        if end_minutes is None:
+            return None
+        return cls._minutes_to_time(end_minutes)
+
+    @classmethod
     def _local_datetime(cls, value):
         if timezone.is_naive(value):
             return timezone.make_aware(value, timezone.get_current_timezone())
@@ -367,7 +410,13 @@ class Booking(OficinaOwnedModel):
     @classmethod
     def datetime_range_for(cls, scheduled_date, start_time, duration_minutes):
         start = cls._local_datetime(datetime.combine(scheduled_date, start_time))
-        end = start + timedelta(minutes=duration_minutes)
+        end_time = cls.calculate_end_time(start_time, duration_minutes)
+        if end_time is None:
+            end_time = start_time
+        end_date = scheduled_date
+        if cls._time_to_minutes(end_time) < cls._time_to_minutes(start_time):
+            end_date = scheduled_date + timedelta(days=1)
+        end = cls._local_datetime(datetime.combine(end_date, end_time))
         return start, end
 
     @classmethod
@@ -433,7 +482,9 @@ class Booking(OficinaOwnedModel):
     @classmethod
     def box_has_conflict(cls, scheduled_date, start_time, duration_minutes, oficina=None, assigned_box=1, exclude_pk=None):
         start = cls._time_to_minutes(start_time)
-        end = start + duration_minutes
+        end = cls.calculate_end_minutes(start_time, duration_minutes)
+        if end is None:
+            return True
         for current_start, current_end in cls._daily_intervals_for_box(
             scheduled_date,
             oficina,
@@ -528,17 +579,18 @@ class Booking(OficinaOwnedModel):
             return []
 
         start_min = cls._time_to_minutes(BUSINESS_START)
-        end_min = cls._time_to_minutes(BUSINESS_END) - duration_minutes
-        if end_min < start_min:
-            return []
+        end_min = cls._time_to_minutes(BUSINESS_END)
 
         result = []
         minimum_start = cls.minimum_start_minutes_for_date(scheduled_date)
-        for candidate in range(start_min, end_min + 1, SLOT_STEP):
+        for candidate in range(start_min, end_min, SLOT_STEP):
             if minimum_start is not None and candidate < minimum_start:
                 continue
             candidate_time = cls._minutes_to_time(candidate)
-            if candidate_time in LUNCH_BLOCKED_START_TIMES:
+            if cls.is_lunch_time(candidate_time):
+                continue
+            candidate_end = cls.calculate_end_minutes(candidate_time, duration_minutes)
+            if candidate_end is None or candidate_end > end_min:
                 continue
             if cls.find_first_available_box(scheduled_date, candidate_time, duration_minutes, oficina=oficina):
                 result.append(candidate_time)
