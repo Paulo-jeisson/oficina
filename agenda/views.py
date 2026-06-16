@@ -508,8 +508,7 @@ class BookingCreateView(FormView):
         context = super().get_context_data(**kwargs)
         context['service_durations'] = {
             'Troca de óleo': '30 minutos',
-            'Alinhamento': '1 hora',
-            'Balanceamento': '1 hora',
+            'Analisar pessoalmente': '1 hora',
             'Revisão básica': '2 horas',
             'Revisão completa': '4 horas',
             'Diagnóstico eletrônico': '1 hora',

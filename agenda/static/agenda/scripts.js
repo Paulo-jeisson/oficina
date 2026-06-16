@@ -9,8 +9,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     const defaultDuration = {
         oil: '30',
-        alignment: '60',
-        balancing: '60',
+        personal_analysis: '60',
         basic_review: '120',
         complete_review: '240',
         electronic_diagnosis: '60',

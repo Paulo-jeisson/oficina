@@ -9,6 +9,7 @@ from .models import (
     Booking,
     Oficina,
     ServiceType,
+    SERVICE_TYPE_DEFAULT_DURATION,
     DURATION_CHOICES,
     BUSINESS_START,
     BUSINESS_END,
@@ -346,8 +347,13 @@ class BookingForm(forms.ModelForm):
         cleaned = super().clean()
         scheduled_date = cleaned.get('scheduled_date')
         start_time = cleaned.get('start_time')
+        service_type = cleaned.get('service_type')
         duration_minutes = cleaned.get('duration_minutes')
         selected_oficina = self.oficina or cleaned.get('oficina')
+
+        if service_type == ServiceType.PERSONAL_ANALYSIS:
+            duration_minutes = SERVICE_TYPE_DEFAULT_DURATION[ServiceType.PERSONAL_ANALYSIS]
+            cleaned['duration_minutes'] = duration_minutes
 
         if self.oficina is None and not selected_oficina:
             selected_oficina = Oficina.objects.order_by('nome').first()

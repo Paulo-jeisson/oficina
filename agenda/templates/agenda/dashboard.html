@@ -61,20 +61,24 @@
     </section>
     {% endif %}
 
-    <div class="summary-grid">
+    <div class="summary-grid dashboard-summary-grid">
         <article class="summary-card">
+            <span class="summary-icon">AG</span>
             <h3>Total de agendamentos</h3>
             <p>{{ total_bookings }}</p>
         </article>
         <article class="summary-card">
+            <span class="summary-icon">HR</span>
             <h3>Horas agendadas hoje</h3>
             <p>{{ daily_summary.0.booked|default:'0' }} min</p>
         </article>
         <article class="summary-card">
+            <span class="summary-icon">ST</span>
             <h3>Status em progresso</h3>
             <p>{{ in_progress_count }}</p>
         </article>
         <article class="summary-card">
+            <span class="summary-icon">OC</span>
             <h3>Ocupação hoje</h3>
             <p>{{ daily_summary.0.occupancy|default:'0' }}%</p>
         </article>

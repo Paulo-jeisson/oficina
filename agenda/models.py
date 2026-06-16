@@ -10,8 +10,7 @@ from django.core.validators import MinValueValidator
 
 class ServiceType(models.TextChoices):
     OIL_CHANGE = 'oil', 'Troca de óleo'
-    ALIGNMENT = 'alignment', 'Alinhamento'
-    BALANCING = 'balancing', 'Balanceamento'
+    PERSONAL_ANALYSIS = 'personal_analysis', 'Analisar pessoalmente'
     BASIC_REVIEW = 'basic_review', 'Revisão básica'
     COMPLETE_REVIEW = 'complete_review', 'Revisão completa'
     ELECTRONIC_DIAGNOSIS = 'electronic_diagnosis', 'Diagnóstico eletrônico'
@@ -19,8 +18,7 @@ class ServiceType(models.TextChoices):
 
 SERVICE_TYPE_DEFAULT_DURATION = {
     ServiceType.OIL_CHANGE: 30,
-    ServiceType.ALIGNMENT: 60,
-    ServiceType.BALANCING: 60,
+    ServiceType.PERSONAL_ANALYSIS: 60,
     ServiceType.BASIC_REVIEW: 120,
     ServiceType.COMPLETE_REVIEW: 240,
     ServiceType.ELECTRONIC_DIAGNOSIS: 60,

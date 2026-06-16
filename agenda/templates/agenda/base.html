@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Oficina Online | Sistema para oficinas e centros automotivos</title>
-    <link rel="stylesheet" href="{% static 'agenda/styles.css' %}?v=20260615-apphome">
+    <link rel="stylesheet" href="{% static 'agenda/styles.css' %}?v=20260616-saas">
     <link rel="manifest" href="{% static 'manifest.json' %}">
     <link rel="icon" type="image/png" sizes="192x192" href="{% static 'icons/icon-192.png' %}">
     <link rel="apple-touch-icon" href="{% static 'icons/icon-192.png' %}">
@@ -15,68 +15,108 @@
     <meta name="apple-mobile-web-app-title" content="Oficina">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 </head>
-<body class="{% block body_class %}{% endblock %}">
-    <header class="site-header">
-        <div class="container header-inner">
-            <a class="brand" href="{% if user.is_authenticated %}{% url 'agenda:dashboard' %}{% else %}{% url 'agenda:home' %}{% endif %}">
-                {% if user.is_authenticated and request.oficina.logo %}
-                    <img class="brand-logo" src="{{ request.oficina.logo.url }}" alt="{{ request.oficina.nome }}">
-                {% else %}
-                    <span class="brand-mark">OO</span>
-                {% endif %}
-                <span>{% if user.is_authenticated and request.oficina %}{{ request.oficina.nome }}{% else %}Oficina Online{% endif %}</span>
-            </a>
-            <nav class="site-nav">
-                {% if user.is_authenticated %}
-                    <a href="{% url 'agenda:app_home' %}">App</a>
-                    <a href="{% url 'agenda:public_booking' request.oficina.slug %}">Agendar serviço</a>
-                    <a href="{% url 'agenda:dashboard' %}">Painel da oficina</a>
-                    <a href="{% url 'agenda:boxes_panel' %}">Painel de Boxes</a>
-                    <a href="{% url 'agenda:minha_oficina' %}">Minha Oficina</a>
-                    <a href="{% url 'agenda:finance_dashboard' %}">Financeiro</a>
-                    <a href="{% url 'agenda:os_list' %}">Ordens de Serviço</a>
-                    <a href="{% url 'agenda:subscription_detail' %}">Minha assinatura</a>
-                    <a class="nav-pill nav-pill-secondary" href="{% url 'agenda:logout' %}">Sair</a>
-                {% else %}
-                    <a href="{% url 'agenda:home' %}">Início</a>
-                    <a href="{% url 'agenda:plans' %}">Planos</a>
-                    <a href="{% url 'agenda:contact' %}">Contato</a>
-                    <a class="nav-pill" href="{% url 'agenda:signup' %}">Comecar teste gratis</a>
-                    <a class="nav-pill nav-pill-secondary" href="{% url 'agenda:login' %}">Entrar no sistema</a>
-                {% endif %}
-            </nav>
-        </div>
-    </header>
+{% with current_url=request.resolver_match.url_name %}
+<body class="{% block body_class %}{% endblock %}{% if user.is_authenticated and current_url != 'home' and current_url != 'plans' and current_url != 'contact' and current_url != 'signup' and current_url != 'login' and current_url != 'password_reset' and current_url != 'password_reset_done' and current_url != 'password_reset_confirm' and current_url != 'password_reset_complete' %} app-body{% endif %}">
+    {% if user.is_authenticated and current_url != 'home' and current_url != 'plans' and current_url != 'contact' and current_url != 'signup' and current_url != 'login' and current_url != 'password_reset' and current_url != 'password_reset_done' and current_url != 'password_reset_confirm' and current_url != 'password_reset_complete' %}
+        <div class="app-shell">
+            <aside class="app-sidebar" aria-label="Menu principal">
+                <a class="app-sidebar-brand" href="{% url 'agenda:dashboard' %}">
+                    {% if request.oficina.logo %}
+                        <img class="brand-logo" src="{{ request.oficina.logo.url }}" alt="{{ request.oficina.nome }}">
+                    {% else %}
+                        <span class="brand-mark">OO</span>
+                    {% endif %}
+                    <span>{% if request.oficina %}{{ request.oficina.nome }}{% else %}Oficina Online{% endif %}</span>
+                </a>
+                <nav class="app-sidebar-nav">
+                    <a class="{% if request.resolver_match.url_name == 'app_home' %}active{% endif %}" href="{% url 'agenda:app_home' %}"><span class="nav-icon">AP</span><span>App</span></a>
+                    <a class="{% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}" href="{% url 'agenda:dashboard' %}"><span class="nav-icon">DB</span><span>Dashboard</span></a>
+                    <a class="{% if request.resolver_match.url_name == 'public_booking' %}active{% endif %}" href="{% url 'agenda:public_booking' request.oficina.slug %}"><span class="nav-icon">AG</span><span>Agendar servi&ccedil;o</span></a>
+                    <a class="{% if request.resolver_match.url_name == 'boxes_panel' %}active{% endif %}" href="{% url 'agenda:boxes_panel' %}"><span class="nav-icon">BX</span><span>Painel de Boxes</span></a>
+                    <a class="{% if request.resolver_match.url_name == 'minha_oficina' %}active{% endif %}" href="{% url 'agenda:minha_oficina' %}"><span class="nav-icon">OF</span><span>Minha Oficina</span></a>
+                    <a class="{% if request.resolver_match.url_name == 'finance_dashboard' %}active{% endif %}" href="{% url 'agenda:finance_dashboard' %}"><span class="nav-icon">FN</span><span>Financeiro</span></a>
+                    <a class="{% if request.resolver_match.url_name == 'os_list' or request.resolver_match.url_name == 'os_detail' %}active{% endif %}" href="{% url 'agenda:os_list' %}"><span class="nav-icon">OS</span><span>Ordens de Servi&ccedil;o</span></a>
+                    <a class="{% if request.resolver_match.url_name == 'subscription_detail' %}active{% endif %}" href="{% url 'agenda:subscription_detail' %}"><span class="nav-icon">AS</span><span>Minha assinatura</span></a>
+                </nav>
+                <a class="app-sidebar-logout" href="{% url 'agenda:logout' %}"><span class="nav-icon">SA</span><span>Sair</span></a>
+            </aside>
 
-    <main class="container site-main">
-        {% if messages %}
-            <div class="messages">
-                {% for message in messages %}
-                    <div class="message message-{{ message.tags }}">{{ message }}</div>
-                {% endfor %}
-            </div>
-        {% endif %}
-        {% block content %}{% endblock %}
-    </main>
-
-    <footer class="site-footer">
-        <div class="container footer-inner">
-            <div>
-                <a class="brand footer-brand" href="{% url 'agenda:home' %}">
+            <div class="app-main">
+                <header class="app-topbar">
+                    <details class="app-mobile-nav">
+                        <summary>Menu</summary>
+                        <nav>
+                            <a href="{% url 'agenda:app_home' %}">App</a>
+                            <a href="{% url 'agenda:dashboard' %}">Dashboard</a>
+                            <a href="{% url 'agenda:public_booking' request.oficina.slug %}">Agendar servi&ccedil;o</a>
+                            <a href="{% url 'agenda:boxes_panel' %}">Painel de Boxes</a>
+                            <a href="{% url 'agenda:minha_oficina' %}">Minha Oficina</a>
+                            <a href="{% url 'agenda:finance_dashboard' %}">Financeiro</a>
+                            <a href="{% url 'agenda:os_list' %}">Ordens de Servi&ccedil;o</a>
+                            <a href="{% url 'agenda:subscription_detail' %}">Minha assinatura</a>
+                            <a href="{% url 'agenda:logout' %}">Sair</a>
+                        </nav>
+                    </details>
+                    <div class="app-topbar-title">
+                        <span>Painel SaaS</span>
+                        <strong>{% if request.oficina %}{{ request.oficina.nome }}{% else %}Oficina Online{% endif %}</strong>
+                    </div>
+                </header>
+                <main class="app-content">
+    {% else %}
+        <header class="site-header">
+            <div class="container header-inner">
+                <a class="brand" href="{% url 'agenda:home' %}">
                     <span class="brand-mark">OO</span>
                     <span>Oficina Online</span>
                 </a>
-                <p>Sistema SaaS para oficinas que querem mais controle na agenda, OS e financeiro.</p>
+                <nav class="site-nav">
+                    <a href="{% url 'agenda:home' %}">In&iacute;cio</a>
+                    <a href="{% url 'agenda:plans' %}">Planos</a>
+                    <a href="{% url 'agenda:contact' %}">Contato</a>
+                    <a class="nav-pill" href="{% url 'agenda:signup' %}">Come&ccedil;ar teste gr&aacute;tis</a>
+                    <a class="nav-pill nav-pill-secondary" href="{% url 'agenda:login' %}">Entrar no sistema</a>
+                </nav>
             </div>
-            <nav class="footer-nav">
-                <a href="{% url 'agenda:plans' %}">Planos</a>
-                <a href="{% url 'agenda:contact' %}">Contato</a>
-                <a href="{% url 'agenda:login' %}">Entrar no sistema</a>
-            </nav>
+        </header>
+        <main class="container site-main">
+    {% endif %}
+
+    {% if messages %}
+        <div class="messages">
+            {% for message in messages %}
+                <div class="message message-{{ message.tags }}">{{ message }}</div>
+            {% endfor %}
         </div>
-    </footer>
+    {% endif %}
+    {% block content %}{% endblock %}
+
+    {% if user.is_authenticated and current_url != 'home' and current_url != 'plans' and current_url != 'contact' and current_url != 'signup' and current_url != 'login' and current_url != 'password_reset' and current_url != 'password_reset_done' and current_url != 'password_reset_confirm' and current_url != 'password_reset_complete' %}
+                </main>
+            </div>
+        </div>
+    {% else %}
+        </main>
+        <footer class="site-footer">
+            <div class="container footer-inner">
+                <div>
+                    <a class="brand footer-brand" href="{% url 'agenda:home' %}">
+                        <span class="brand-mark">OO</span>
+                        <span>Oficina Online</span>
+                    </a>
+                    <p>Sistema SaaS para oficinas que querem mais controle na agenda, OS e financeiro.</p>
+                </div>
+                <nav class="footer-nav">
+                    <a href="{% url 'agenda:plans' %}">Planos</a>
+                    <a href="{% url 'agenda:contact' %}">Contato</a>
+                    <a href="{% url 'agenda:login' %}">Entrar no sistema</a>
+                </nav>
+            </div>
+        </footer>
+    {% endif %}
+
     {% include 'agenda/includes/support_whatsapp.html' %}
-    <script src="{% static 'agenda/scripts.js' %}" defer></script>
+    <script src="{% static 'agenda/scripts.js' %}?v=20260616-personal-analysis" defer></script>
     <script>
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', function () {
@@ -86,4 +126,5 @@
     </script>
     {% block extra_scripts %}{% endblock %}
 </body>
+{% endwith %}
 </html>
