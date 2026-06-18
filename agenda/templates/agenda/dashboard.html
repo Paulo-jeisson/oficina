@@ -31,7 +31,7 @@
                 <p class="eyebrow">Novo agendamento recebido</p>
                 <h2>Confirme rapidamente pelo WhatsApp</h2>
             </div>
-            <span>{{ pending_whatsapp_bookings|length }} pendente{{ pending_whatsapp_bookings|length|pluralize }}</span>
+            <span>{{ total_pending_whatsapp_bookings }} pendente{{ total_pending_whatsapp_bookings|pluralize }}</span>
         </div>
         <div class="whatsapp-booking-list">
             {% for item in pending_whatsapp_bookings %}
@@ -58,6 +58,22 @@
             {% endwith %}
             {% endfor %}
         </div>
+        {% if pending_bookings_page.has_previous or pending_bookings_page.has_next %}
+        <div class="pagination-controls whatsapp-booking-pagination">
+            <div class="pagination-info">
+                PÃ¡gina <strong>{{ pending_bookings_page.number }}</strong> de <strong>{{ pending_bookings_page.paginator.num_pages }}</strong>
+            </div>
+            <div class="pagination-buttons">
+                {% if pending_bookings_page.has_previous %}
+                    <a class="btn btn-secondary" href="?pending_page={{ pending_bookings_page.previous_page_number }}{% if pending_filter_querystring %}&{{ pending_filter_querystring }}{% endif %}">Anterior</a>
+                {% endif %}
+
+                {% if pending_bookings_page.has_next %}
+                    <a class="btn btn-secondary" href="?pending_page={{ pending_bookings_page.next_page_number }}{% if pending_filter_querystring %}&{{ pending_filter_querystring }}{% endif %}">Proximo</a>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
     </section>
     {% endif %}
 

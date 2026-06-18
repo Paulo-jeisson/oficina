@@ -860,11 +860,7 @@ class DashboardView(StaffRequiredMixin, TemplateView):
             return f'55{digits}'
         return ''
 
-    def _build_pending_whatsapp_items(self):
-        pending_bookings = (
-            Booking.objects.filter(oficina=self.oficina, status=Booking.Status.SCHEDULED)
-            .order_by('-created_at')[:5]
-        )
+    def _build_pending_whatsapp_items(self, pending_bookings):
         items = []
         for booking in pending_bookings:
             phone = self._normalize_whatsapp_phone(booking.phone)
@@ -879,6 +875,21 @@ class DashboardView(StaffRequiredMixin, TemplateView):
                 'whatsapp_url': f'https://wa.me/{phone}?text={quote(message)}' if phone else '',
             })
         return items
+
+    def _build_pending_whatsapp_page(self):
+        pending_bookings = (
+            Booking.objects.filter(oficina=self.oficina, status=Booking.Status.SCHEDULED)
+            .order_by('-created_at')
+        )
+        paginator = Paginator(pending_bookings, 3)
+        page = self.request.GET.get('pending_page')
+        try:
+            bookings_page = paginator.page(page)
+        except PageNotAnInteger:
+            bookings_page = paginator.page(1)
+        except EmptyPage:
+            bookings_page = paginator.page(paginator.num_pages)
+        return bookings_page, self._build_pending_whatsapp_items(bookings_page)
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -930,6 +941,9 @@ class DashboardView(StaffRequiredMixin, TemplateView):
         in_progress_count = Booking.objects.filter(oficina=self.oficina, status=Booking.Status.IN_PROGRESS).count()
         filter_params = self.request.GET.copy()
         filter_params.pop('page', None)
+        pending_filter_params = self.request.GET.copy()
+        pending_filter_params.pop('pending_page', None)
+        pending_bookings_page, pending_whatsapp_bookings = self._build_pending_whatsapp_page()
 
         selected_schedule = []
         if date_filter:
@@ -956,7 +970,10 @@ class DashboardView(StaffRequiredMixin, TemplateView):
             'filter_querystring': filter_params.urlencode(),
             'selected_schedule': selected_schedule,
             'status_choices': Booking.Status.choices,
-            'pending_whatsapp_bookings': self._build_pending_whatsapp_items(),
+            'pending_whatsapp_bookings': pending_whatsapp_bookings,
+            'pending_bookings_page': pending_bookings_page,
+            'total_pending_whatsapp_bookings': pending_bookings_page.paginator.count,
+            'pending_filter_querystring': pending_filter_params.urlencode(),
         })
         return context
 
@@ -1079,11 +1096,24 @@ class BoxesPanelView(StaffRequiredMixin, TemplateView):
             }
             for box_index in bookings_by_box
         ]
+        box_productivity = []
+        for box in boxes:
+            booked_minutes = sum(booking.duration_minutes for booking in box['bookings'])
+            productivity_percent = round((booked_minutes / BUSINESS_MINUTES) * 100) if BUSINESS_MINUTES else 0
+            box_productivity.append({
+                'label': box['label'],
+                'bookings_count': len(box['bookings']),
+                'booked_minutes': booked_minutes,
+                'productivity_percent': productivity_percent,
+                'bar_percent': min(productivity_percent, 100),
+            })
 
         context.update({
             'selected_date': selected_date,
             'selected_date_value': selected_date.isoformat(),
             'boxes': boxes,
+            'box_productivity': box_productivity,
+            'box_daily_capacity_minutes': BUSINESS_MINUTES,
             'block_form': BoxBlockForm(oficina=self.oficina),
             'duration_form': BookingDurationUpdateForm(),
             'duration_choices': BookingDurationUpdateForm.base_fields['duration_minutes'].choices,

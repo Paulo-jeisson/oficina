@@ -135,5 +135,30 @@
         </article>
         {% endfor %}
     </section>
+
+    <section class="box-productivity-panel">
+        <div class="box-productivity-head">
+            <div>
+                <p class="eyebrow">{{ selected_date|date:'d/m/Y' }}</p>
+                <h2>Produtividade dos Boxes</h2>
+            </div>
+            <span>Capacidade diaria por box: {{ box_daily_capacity_minutes }} min</span>
+        </div>
+
+        <div class="box-productivity-chart">
+            {% for item in box_productivity %}
+            <div class="box-productivity-row">
+                <div class="box-productivity-label">
+                    <strong>{{ item.label }}</strong>
+                    <span>{{ item.bookings_count }} atendimento{{ item.bookings_count|pluralize }} - {{ item.booked_minutes }} min</span>
+                </div>
+                <div class="box-productivity-track" aria-label="{{ item.label }} com {{ item.productivity_percent }}% de produtividade">
+                    <span style="width: {{ item.bar_percent }}%"></span>
+                </div>
+                <strong class="box-productivity-value">{{ item.productivity_percent }}%</strong>
+            </div>
+            {% endfor %}
+        </div>
+    </section>
 </section>
 {% endblock %}
