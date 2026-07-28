@@ -15,7 +15,10 @@
         </div>
         <input type="hidden" name="next" value="{% url 'agenda:subscription_blocked' %}">
         <button class="btn btn-primary" type="submit">Assinar novamente</button>
-        <a class="btn btn-secondary" href="{% url 'agenda:logout' %}">Sair</a>
+        <button class="btn btn-secondary" type="submit" form="logout-form">Sair</button>
+    </form>
+    <form id="logout-form" method="post" action="{% url 'agenda:logout' %}">
+        {% csrf_token %}
     </form>
     <div class="payment-actions">
         <form method="post" action="{% url 'agenda:subscription_pay' %}">

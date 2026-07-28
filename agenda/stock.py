@@ -50,7 +50,7 @@ def move_stock(*, item, movement_type, quantity=None, target_quantity=None, user
 def reconcile_order_part(item, *, user=None):
     # Regra do sistema: a peça é consumida ao ser adicionada à OS. O saldo
     # aplicado torna a operação idempotente e permite reconciliar só a diferença.
-    order_item = OrdemServicoPartItem.objects.select_for_update().select_related(
+    order_item = OrdemServicoPartItem.objects.select_for_update(of=('self',)).select_related(
         'estoque_item', 'ordem_servico'
     ).get(pk=item.pk)
     if not order_item.estoque_item_id:
@@ -70,13 +70,13 @@ def reconcile_order_part(item, *, user=None):
         )
     if delta:
         order_item.stock_quantity_applied = order_item.quantity
-        order_item.save(update_fields=['stock_quantity_applied'])
+        order_item.save(update_fields=['stock_quantity_applied'], workflow=True)
     return order_item
 
 
 @transaction.atomic
 def reverse_order_part(item, *, user=None):
-    locked = OrdemServicoPartItem.objects.select_for_update().select_related(
+    locked = OrdemServicoPartItem.objects.select_for_update(of=('self',)).select_related(
         'estoque_item', 'ordem_servico'
     ).get(pk=item.pk)
     if locked.estoque_item_id and locked.stock_quantity_applied:
@@ -87,5 +87,5 @@ def reverse_order_part(item, *, user=None):
             order=locked.ordem_servico, order_item=locked,
         )
         locked.stock_quantity_applied = 0
-        locked.save(update_fields=['stock_quantity_applied'])
+        locked.save(update_fields=['stock_quantity_applied'], workflow=True)
     return locked

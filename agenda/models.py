@@ -2,7 +2,7 @@ from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 from django.utils import timezone
 from django.conf import settings
-from django.db import models
+from django.db import models, transaction
 from django.urls import reverse
 from django.utils.text import slugify
 from django.core.validators import MinValueValidator
@@ -66,6 +66,7 @@ TRANSACTION_STATUS_CHOICES = [
     ('pending', 'Pendente'),
     ('paid', 'Pago'),
     ('overdue', 'Vencido'),
+    ('canceled', 'Cancelado'),
 ]
 
 BUSINESS_START = time(7, 0)
@@ -279,6 +280,67 @@ class Assinatura(models.Model):
         if payment_method:
             self.payment_method = payment_method
         self.save(update_fields=['status', 'last_payment_at', 'due_date', 'payment_method', 'updated_at'])
+
+
+class AsaasPayment(OficinaOwnedModel):
+    class Status(models.TextChoices):
+        PENDING = 'pending', 'Pendente'
+        CONFIRMED = 'confirmed', 'Confirmado'
+        RECEIVED = 'received', 'Recebido'
+        CANCELED = 'canceled', 'Cancelado'
+        REFUNDED = 'refunded', 'Estornado'
+
+    assinatura = models.ForeignKey(
+        Assinatura,
+        related_name='asaas_payments',
+        on_delete=models.PROTECT,
+    )
+    payment_id = models.CharField('ID da cobranca no Asaas', max_length=80, unique=True)
+    customer_id = models.CharField('ID do cliente no Asaas', max_length=80)
+    external_reference = models.CharField(max_length=120)
+    billing_type = models.CharField(max_length=30)
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
+    invoice_url = models.URLField(blank=True)
+    paid_at = models.DateField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['oficina', 'assinatura', 'status']),
+        ]
+        constraints = [
+            models.CheckConstraint(condition=models.Q(amount__gt=0), name='asaas_payment_amount_positive'),
+        ]
+
+    def clean(self):
+        if self.assinatura_id and self.oficina_id != self.assinatura.oficina_id:
+            raise ValidationError({'oficina': 'O pagamento deve pertencer a oficina da assinatura.'})
+
+
+class AsaasWebhookEvent(models.Model):
+    class Status(models.TextChoices):
+        PROCESSING = 'processing', 'Processando'
+        PROCESSED = 'processed', 'Processado'
+        IGNORED = 'ignored', 'Ignorado'
+        FAILED = 'failed', 'Falhou'
+
+    event_id = models.CharField(max_length=100, unique=True)
+    event_type = models.CharField(max_length=80)
+    payment_id = models.CharField(max_length=80, blank=True)
+    payload_sha256 = models.CharField(max_length=64)
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.PROCESSING)
+    detail = models.CharField(max_length=240, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    processed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['payment_id', 'event_type']),
+        ]
 
 
 def format_duration(minutes: int) -> str:
@@ -751,6 +813,10 @@ class WhatsAppMessage(OficinaOwnedModel):
         super().save(*args, **kwargs)
 
 
+class OrderNumberSequence(models.Model):
+    current_value = models.PositiveBigIntegerField(default=0)
+
+
 class OrdemServico(OficinaOwnedModel):
     class Status(models.TextChoices):
         RECEBIDO = 'received', 'Recebido'
@@ -805,7 +871,27 @@ class OrdemServico(OficinaOwnedModel):
     def save(self, *args, **kwargs):
         user = kwargs.pop('user', None)
         note = kwargs.pop('note', '')
+        workflow = kwargs.pop('workflow', False)
         new = self.pk is None
+        if not workflow:
+            protected_statuses = {
+                self.Status.COMPLETED,
+                self.Status.DELIVERED,
+                self.Status.CANCELED,
+            }
+            if (new and self.status in protected_statuses) or (
+                not new
+                and (
+                    self._original_status in protected_statuses
+                    or self.status in protected_statuses
+                )
+                and self._original_status != self.status
+            ):
+                raise ValidationError(
+                    'Use o workflow transacional para concluir, cancelar ou reabrir a OS.'
+                )
+            if not new and self._original_status in protected_statuses:
+                raise ValidationError('Reabra a OS antes de alterá-la.')
         if not self.order_number:
             self.order_number = self.generate_order_number()
         self.total_value = self.service_value + self.parts_value
@@ -831,53 +917,21 @@ class OrdemServico(OficinaOwnedModel):
 
         self._original_status = self.status
 
-        if self.status == self.Status.COMPLETED:
-            self.register_financial_completion(user=user)
-
     def generate_order_number(self):
-        last_os = OrdemServico.objects.order_by('-id').first()
-        next_number = 1
-        if last_os and last_os.order_number.startswith('OS-'):
-            try:
-                next_number = int(last_os.order_number.replace('OS-', '')) + 1
-            except ValueError:
-                next_number = last_os.id + 1
+        with transaction.atomic():
+            sequence, _ = OrderNumberSequence.objects.select_for_update().get_or_create(pk=1)
+            sequence.current_value += 1
+            sequence.save(update_fields=['current_value'])
+            next_number = sequence.current_value
         return f'OS-{next_number:06d}'
 
-    def register_financial_completion(self, user=None):
-        if self.status != self.Status.COMPLETED:
-            return
-        if FinancialTransaction.objects.filter(ordem_servico=self, transaction_type='receivable').exists():
-            return
-
-        FinancialTransaction.objects.create(
-            oficina=self.oficina,
-            ordem_servico=self,
-            transaction_type='receivable',
-            status='paid',
-            amount=self.total_value,
-            due_date=self.completed_at.date() if self.completed_at else date.today(),
-            paid_at=self.completed_at or timezone.now(),
-            payment_method=self.payment_method,
-            description=f'Faturamento da OS {self.order_number}',
-        )
-
-        CashFlowRecord.objects.create(
-            oficina=self.oficina,
-            ordem_servico=self,
-            entry_type='inflow',
-            amount=self.total_value,
-            entry_date=self.completed_at.date() if self.completed_at else date.today(),
-            description=f'Receita registrada para OS {self.order_number}',
-        )
-
-        FinanceAudit.objects.create(
-            oficina=self.oficina,
-            ordem_servico=self,
-            action='OS concluída e faturamento registrado',
-            user=user,
-            note=f'Valor total R$ {self.total_value:.2f}',
-        )
+    @property
+    def is_editable(self):
+        return self.status not in {
+            self.Status.COMPLETED,
+            self.Status.DELIVERED,
+            self.Status.CANCELED,
+        }
 
     @property
     def status_label(self):
@@ -905,14 +959,26 @@ class OrdemServicoServiceItem(OficinaOwnedModel):
     class Meta:
         verbose_name = 'Serviço executado'
         verbose_name_plural = 'Serviços executados'
+        constraints = [
+            models.CheckConstraint(condition=models.Q(quantity__gt=0), name='os_service_quantity_positive'),
+            models.CheckConstraint(condition=models.Q(unit_price__gte=0), name='os_service_price_nonnegative'),
+        ]
 
     def __str__(self):
         return f'{self.description} ({self.quantity})'
 
     def save(self, *args, **kwargs):
+        workflow = kwargs.pop('workflow', False)
         if not self.oficina_id and self.ordem_servico_id:
             self.oficina = self.ordem_servico.oficina
+        if not workflow and self.ordem_servico_id and not self.ordem_servico.is_editable:
+            raise ValidationError('Reabra a OS antes de alterar serviços.')
         super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        if self.ordem_servico_id and not self.ordem_servico.is_editable:
+            raise ValidationError('Reabra a OS antes de remover serviços.')
+        return super().delete(*args, **kwargs)
 
     @property
     def total_price(self):
@@ -939,16 +1005,29 @@ class OrdemServicoPartItem(OficinaOwnedModel):
     class Meta:
         verbose_name = 'Peça utilizada'
         verbose_name_plural = 'Peças utilizadas'
+        constraints = [
+            models.CheckConstraint(condition=models.Q(quantity__gt=0), name='os_part_quantity_positive'),
+            models.CheckConstraint(condition=models.Q(unit_price__gte=0), name='os_part_price_nonnegative'),
+            models.CheckConstraint(condition=models.Q(unit_cost__gte=0), name='os_part_cost_nonnegative'),
+        ]
 
     def __str__(self):
         return f'{self.description} ({self.quantity})'
 
     def save(self, *args, **kwargs):
+        workflow = kwargs.pop('workflow', False)
         if not self.oficina_id and self.ordem_servico_id:
             self.oficina = self.ordem_servico.oficina
         if self.estoque_item_id and self.estoque_item.oficina_id != self.oficina_id:
             raise ValidationError('A peça e a ordem de serviço devem pertencer à mesma oficina.')
+        if not workflow and self.ordem_servico_id and not self.ordem_servico.is_editable:
+            raise ValidationError('Reabra a OS antes de alterar peças.')
         super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        if self.ordem_servico_id and not self.ordem_servico.is_editable:
+            raise ValidationError('Reabra a OS antes de remover peças.')
+        return super().delete(*args, **kwargs)
 
     @property
     def total_price(self):
@@ -976,6 +1055,16 @@ class FinancialTransaction(OficinaOwnedModel):
         ordering = ['-due_date', '-created_at']
         verbose_name = 'Movimentação financeira'
         verbose_name_plural = 'Movimentações financeiras'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['ordem_servico'],
+                condition=models.Q(
+                    ordem_servico__isnull=False,
+                    transaction_type='receivable',
+                ),
+                name='unique_receivable_por_os',
+            ),
+        ]
 
     def __str__(self):
         return f'{self.get_transaction_type_display()} - R$ {self.amount:.2f}'
@@ -992,6 +1081,10 @@ class CashFlowRecord(OficinaOwnedModel):
         ('inflow', 'Entrada'),
         ('outflow', 'Saída'),
     ]
+    STATUS_CHOICES = [
+        ('active', 'Ativo'),
+        ('reversed', 'Estornado'),
+    ]
     ordem_servico = models.ForeignKey(
         'agenda.OrdemServico',
         related_name='cash_records',
@@ -1003,11 +1096,31 @@ class CashFlowRecord(OficinaOwnedModel):
     entry_type = models.CharField('Tipo', max_length=20, choices=ENTRY_CHOICES)
     amount = models.DecimalField('Valor', max_digits=10, decimal_places=2)
     description = models.TextField('Descrição', blank=True)
+    status = models.CharField('Status', max_length=12, choices=STATUS_CHOICES, default='active')
+    reversal_of = models.OneToOneField(
+        'self',
+        related_name='reversal',
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        verbose_name='Estorno de',
+    )
 
     class Meta:
         ordering = ['-entry_date']
         verbose_name = 'Registro de fluxo de caixa'
         verbose_name_plural = 'Registros de fluxo de caixa'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['ordem_servico'],
+                condition=models.Q(
+                    ordem_servico__isnull=False,
+                    entry_type='inflow',
+                    status='active',
+                ),
+                name='unique_active_inflow_por_os',
+            ),
+        ]
 
     def __str__(self):
         return f'{self.get_entry_type_display()} - R$ {self.amount:.2f} em {self.entry_date}'

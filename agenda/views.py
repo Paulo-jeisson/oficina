@@ -1,14 +1,17 @@
 import json
+import hashlib
 import logging
 import secrets
 import re
 from datetime import date, datetime, timedelta
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from urllib.parse import quote
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import login, logout
 from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
+from django.contrib.auth.views import LoginView, PasswordResetView
 from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
 from django.http import JsonResponse, HttpResponse
 from django.shortcuts import get_object_or_404, redirect
@@ -40,6 +43,8 @@ from .forms import (
 )
 from .models import (
     Assinatura,
+    AsaasPayment,
+    AsaasWebhookEvent,
     BoxBlock,
     Booking,
     BUSINESS_MINUTES,
@@ -58,11 +63,41 @@ from .models import (
     EstoqueMovimentacao,
 )
 from .stock import move_stock, reconcile_order_part, reverse_order_part
+from .order_workflow import cancel_order, complete_order, reopen_order
+from .booking_workflow import create_booking
 from .whatsapp import build_booking_owner_whatsapp_url
+from .security import (
+    clear_rate_limit,
+    get_client_ip,
+    rate_limit_exceeded,
+    safe_local_redirect,
+    safe_spreadsheet_value,
+)
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 
 logger = logging.getLogger(__name__)
+
+
+class PublicPostRateLimitMixin:
+    rate_limit_scope = 'public'
+    rate_limit = 20
+    rate_limit_window = 3600
+
+    def dispatch(self, request, *args, **kwargs):
+        if request.method == 'POST' and rate_limit_exceeded(
+            self.rate_limit_scope,
+            get_client_ip(request),
+            self.rate_limit,
+            self.rate_limit_window,
+        ):
+            response = HttpResponse(
+                'Muitas tentativas. Aguarde antes de tentar novamente.',
+                status=429,
+            )
+            response['Retry-After'] = str(self.rate_limit_window)
+            return response
+        return super().dispatch(request, *args, **kwargs)
 
 
 class PublicHomeView(TemplateView):
@@ -77,7 +112,62 @@ class PublicContactView(TemplateView):
     template_name = 'agenda/site_contact.html'
 
 
-class OficinaSignupView(FormView):
+class RateLimitedLoginView(LoginView):
+    template_name = 'registration/login.html'
+    redirect_authenticated_user = True
+    failure_limit = 10
+    failure_window = 900
+
+    def _identifiers(self):
+        username = self.request.POST.get('username', '').strip().casefold()
+        return get_client_ip(self.request), username
+
+    def dispatch(self, request, *args, **kwargs):
+        if request.method == 'POST':
+            client_ip, username = self._identifiers()
+            blocked = rate_limit_exceeded(
+                'login-ip', client_ip, self.failure_limit, self.failure_window, increment=False
+            )
+            if username:
+                blocked = blocked or rate_limit_exceeded(
+                    'login-account', username, self.failure_limit, self.failure_window, increment=False
+                )
+            if blocked:
+                response = HttpResponse(
+                    'Muitas tentativas de login. Aguarde antes de tentar novamente.',
+                    status=429,
+                )
+                response['Retry-After'] = str(self.failure_window)
+                return response
+        return super().dispatch(request, *args, **kwargs)
+
+    def form_invalid(self, form):
+        client_ip, username = self._identifiers()
+        rate_limit_exceeded(
+            'login-ip', client_ip, self.failure_limit, self.failure_window
+        )
+        if username:
+            rate_limit_exceeded(
+                'login-account', username, self.failure_limit, self.failure_window
+            )
+        return super().form_invalid(form)
+
+    def form_valid(self, form):
+        _, username = self._identifiers()
+        if username:
+            clear_rate_limit('login-account', username)
+        return super().form_valid(form)
+
+
+class RateLimitedPasswordResetView(PublicPostRateLimitMixin, PasswordResetView):
+    rate_limit_scope = 'password-reset'
+    rate_limit = 5
+    rate_limit_window = 3600
+
+
+class OficinaSignupView(PublicPostRateLimitMixin, FormView):
+    rate_limit_scope = 'signup'
+    rate_limit = 10
     template_name = 'agenda/signup.html'
     form_class = OficinaSignupForm
     success_url = reverse_lazy('agenda:dashboard')
@@ -154,7 +244,16 @@ class AssinaturaPaymentCreateView(LoginRequiredMixin, View):
     login_url = reverse_lazy('agenda:login')
 
     def post(self, request, *args, **kwargs):
-        fallback_url = request.POST.get('next') or request.META.get('HTTP_REFERER') or reverse('agenda:subscription_detail')
+        requested_fallback = request.POST.get('next') or request.META.get('HTTP_REFERER')
+        fallback_url = (
+            requested_fallback
+            if requested_fallback and url_has_allowed_host_and_scheme(
+                requested_fallback,
+                allowed_hosts={request.get_host()},
+                require_https=request.is_secure(),
+            )
+            else reverse('agenda:subscription_detail')
+        )
         form = AssinaturaPaymentForm(request.POST)
         if not form.is_valid():
             messages.error(request, 'Escolha uma forma de pagamento valida.')
@@ -191,114 +290,122 @@ class AssinaturaPaymentCreateView(LoginRequiredMixin, View):
 @method_decorator(csrf_exempt, name='dispatch')
 class AsaasWebhookView(View):
     PAYMENT_PAID_EVENTS = {'PAYMENT_CONFIRMED', 'PAYMENT_RECEIVED'}
+    REMOTE_PAID_STATUSES = {'CONFIRMED', 'RECEIVED'}
 
     def post(self, request, *args, **kwargs):
         if not self._is_valid_token(request):
             logger.warning('Webhook Asaas rejeitado por token invalido.')
             return JsonResponse({'detail': 'token invalido'}, status=403)
 
+        if len(request.body) > settings.ASAAS_WEBHOOK_MAX_BODY_BYTES:
+            logger.warning('Webhook Asaas rejeitado por tamanho excessivo.')
+            return JsonResponse({'detail': 'payload muito grande'}, status=413)
+
         try:
             payload = json.loads(request.body.decode('utf-8') or '{}')
-        except json.JSONDecodeError:
+        except (UnicodeDecodeError, json.JSONDecodeError):
             logger.warning('Webhook Asaas rejeitado por JSON invalido.')
             return JsonResponse({'detail': 'json invalido'}, status=400)
 
+        if not isinstance(payload, dict):
+            return JsonResponse({'detail': 'payload invalido'}, status=400)
+
+        event_id = payload.get('id')
         event = payload.get('event')
         payment = payload.get('payment') or {}
+        if (
+            not isinstance(event_id, str)
+            or not event_id.strip()
+            or len(event_id) > 100
+            or not isinstance(event, str)
+            or len(event) > 80
+            or not isinstance(payment, dict)
+        ):
+            return JsonResponse({'detail': 'evento invalido'}, status=400)
+
         payment_id = payment.get('id', '')
-        external_reference = payment.get('externalReference', '')
+        if not isinstance(payment_id, str) or len(payment_id) > 80:
+            return JsonResponse({'detail': 'pagamento invalido'}, status=400)
+
+        payload_hash = hashlib.sha256(request.body).hexdigest()
+        event_record, claimed = self._claim_event(event_id, event, payment_id, payload_hash)
+        if not claimed:
+            return JsonResponse({
+                'received': True,
+                'processed': False,
+                'already_processed': event_record.status != AsaasWebhookEvent.Status.FAILED,
+            })
+
         logger.info(
-            'Webhook Asaas recebido: event=%s payment_id=%s external_reference=%s status=%s billing_type=%s',
+            'Webhook Asaas autenticado: event_id=%s event=%s payment_id=%s.',
+            event_id,
             event,
             payment_id,
-            external_reference,
-            payment.get('status', ''),
-            payment.get('billingType', ''),
         )
 
         if event not in self.PAYMENT_PAID_EVENTS:
-            logger.info('Webhook Asaas ignorado: event=%s payment_id=%s.', event, payment_id)
+            self._finish_event(event_record, AsaasWebhookEvent.Status.IGNORED, 'Evento sem efeito local.')
             return JsonResponse({'received': True, 'processed': False})
 
-        assinatura = self._find_assinatura(payment_id, external_reference)
-        if assinatura is None:
-            logger.warning(
-                'Webhook Asaas sem assinatura correspondente: event=%s payment_id=%s external_reference=%s.',
-                event,
-                payment_id,
-                external_reference,
-            )
+        local_payment = AsaasPayment.objects.select_related('assinatura', 'oficina').filter(
+            payment_id=payment_id
+        ).first()
+        if local_payment is None:
+            self._finish_event(event_record, AsaasWebhookEvent.Status.IGNORED, 'Cobranca local inexistente.')
+            logger.warning('Webhook Asaas sem cobranca local: event_id=%s payment_id=%s.', event_id, payment_id)
             return JsonResponse({'received': True, 'processed': False})
 
-        method = self._payment_method_from_asaas(payment)
-        paid_at = self._payment_date_from_asaas(payment)
-        previous_status = assinatura.status
-        previous_due_date = assinatura.due_date
-        already_processed = bool(
-            payment_id
-            and assinatura.asaas_payment_id == payment_id
-            and assinatura.last_payment_at
-        )
+        try:
+            verified_payment = AsaasClient().get_payment(payment_id)
+        except AsaasError:
+            self._finish_event(event_record, AsaasWebhookEvent.Status.FAILED, 'Falha ao verificar cobranca no Asaas.')
+            logger.exception('Falha ao verificar cobranca do webhook Asaas: event_id=%s.', event_id)
+            return JsonResponse({'detail': 'verificacao indisponivel'}, status=503)
 
-        if already_processed:
-            logger.info(
-                'Webhook Asaas ja processado anteriormente: assinatura_id=%s event=%s payment_id=%s.',
-                assinatura.pk,
-                event,
-                payment_id,
-            )
-            self._register_audit_log(
-                assinatura=assinatura,
-                event=event,
-                payment=payment,
-                previous_status=previous_status,
-                previous_due_date=previous_due_date,
-                action='Webhook Asaas repetido para pagamento ja processado',
-            )
-            return JsonResponse({'received': True, 'processed': False, 'already_processed': True})
+        validation_error = self._validate_remote_payment(local_payment, verified_payment)
+        if validation_error:
+            self._finish_event(event_record, AsaasWebhookEvent.Status.IGNORED, validation_error)
+            logger.warning('Webhook Asaas nao confirmado: event_id=%s motivo=%s.', event_id, validation_error)
+            return JsonResponse({'received': True, 'processed': False})
 
-        if payment_id and not assinatura.asaas_payment_id:
-            assinatura.asaas_payment_id = payment_id
-            assinatura.save(update_fields=['asaas_payment_id', 'updated_at'])
-
-        assinatura.mark_paid(payment_method=method, paid_at=paid_at)
-        self._register_audit_log(
-            assinatura=assinatura,
-            event=event,
-            payment=payment,
-            previous_status=previous_status,
-            previous_due_date=previous_due_date,
-            action='Webhook Asaas confirmou pagamento de assinatura',
-        )
-
-        logger.info(
-            'Webhook Asaas processado: assinatura_id=%s oficina_id=%s event=%s payment_id=%s status=%s due_date=%s.',
-            assinatura.pk,
-            assinatura.oficina_id,
-            event,
-            payment_id,
-            assinatura.status,
-            assinatura.due_date,
-        )
-
-        return JsonResponse({'received': True, 'processed': True})
+        processed = self._apply_payment(event_record, local_payment, verified_payment)
+        return JsonResponse({'received': True, 'processed': processed, 'already_processed': not processed})
 
     def _is_valid_token(self, request):
         expected_token = settings.ASAAS_WEBHOOK_TOKEN
         received_token = request.headers.get('asaas-access-token', '')
         return bool(expected_token and secrets.compare_digest(expected_token, received_token))
 
-    def _find_assinatura(self, payment_id, external_reference):
-        if payment_id:
-            assinatura = Assinatura.objects.select_related('oficina').filter(asaas_payment_id=payment_id).first()
-            if assinatura:
-                return assinatura
+    def _claim_event(self, event_id, event_type, payment_id, payload_hash):
+        with transaction.atomic():
+            record, created = AsaasWebhookEvent.objects.get_or_create(
+                event_id=event_id,
+                defaults={
+                    'event_type': event_type,
+                    'payment_id': payment_id,
+                    'payload_sha256': payload_hash,
+                },
+            )
+            if created:
+                return record, True
+            record = AsaasWebhookEvent.objects.select_for_update().get(pk=record.pk)
+            if record.payload_sha256 != payload_hash:
+                logger.error('Event ID Asaas reutilizado com payload diferente: event_id=%s.', event_id)
+                return record, False
+            if record.status == AsaasWebhookEvent.Status.FAILED:
+                record.status = AsaasWebhookEvent.Status.PROCESSING
+                record.detail = ''
+                record.processed_at = None
+                record.save(update_fields=['status', 'detail', 'processed_at'])
+                return record, True
+            return record, False
 
-        if external_reference.startswith('assinatura-'):
-            assinatura_id = external_reference.replace('assinatura-', '', 1)
-            return Assinatura.objects.select_related('oficina').filter(pk=assinatura_id).first()
-
-        return None
+    def _finish_event(self, event_record, status, detail=''):
+        AsaasWebhookEvent.objects.filter(pk=event_record.pk).update(
+            status=status,
+            detail=detail[:240],
+            processed_at=timezone.now(),
+        )
 
     def _payment_method_from_asaas(self, payment):
         if payment.get('billingType') == 'CREDIT_CARD':
@@ -315,26 +422,77 @@ class AsaasWebhookView(View):
             logger.warning('Webhook Asaas recebeu data de pagamento invalida: %s.', date_value)
             return None
 
-    def _register_audit_log(self, assinatura, event, payment, previous_status, previous_due_date, action):
-        note = (
-            f'Evento Asaas: {event}; '
-            f'payment_id: {payment.get("id", "")}; '
-            f'status Asaas: {payment.get("status", "")}; '
-            f'forma: {payment.get("billingType", "")}; '
-            f'valor: {payment.get("value", "")}; '
-            f'status anterior: {previous_status}; '
-            f'vencimento anterior: {previous_due_date}; '
-            f'novo vencimento: {assinatura.due_date}.'
-        )
-        FinanceAudit.objects.create(
-            oficina=assinatura.oficina,
-            action=action,
-            note=note,
-        )
+    def _validate_remote_payment(self, local_payment, remote):
+        if not isinstance(remote, dict) or remote.get('id') != local_payment.payment_id:
+            return 'ID da cobranca nao confere.'
+        if remote.get('status') not in self.REMOTE_PAID_STATUSES:
+            return 'Cobranca ainda nao esta paga no Asaas.'
+        if remote.get('customer') != local_payment.customer_id:
+            return 'Cliente Asaas nao confere.'
+        if remote.get('externalReference') != local_payment.external_reference:
+            return 'Referencia externa nao confere.'
+        if remote.get('billingType') != local_payment.billing_type:
+            return 'Forma de pagamento nao confere.'
+        try:
+            remote_amount = Decimal(str(remote.get('value'))).quantize(Decimal('0.01'))
+        except (InvalidOperation, TypeError, ValueError):
+            return 'Valor da cobranca invalido.'
+        if remote_amount != local_payment.amount:
+            return 'Valor da cobranca nao confere.'
+        return ''
+
+    def _apply_payment(self, event_record, local_payment, remote):
+        with transaction.atomic():
+            payment = (
+                AsaasPayment.objects.select_for_update()
+                .select_related('assinatura', 'oficina')
+                .get(pk=local_payment.pk)
+            )
+            assinatura = Assinatura.objects.select_for_update().get(pk=payment.assinatura_id)
+            if payment.status in {AsaasPayment.Status.CONFIRMED, AsaasPayment.Status.RECEIVED}:
+                self._finish_event(event_record, AsaasWebhookEvent.Status.PROCESSED, 'Pagamento ja aplicado.')
+                return False
+
+            paid_at = self._payment_date_from_asaas(remote) or timezone.localdate()
+            previous_status = assinatura.status
+            previous_due_date = assinatura.due_date
+            payment.status = (
+                AsaasPayment.Status.RECEIVED
+                if remote.get('status') == 'RECEIVED'
+                else AsaasPayment.Status.CONFIRMED
+            )
+            payment.paid_at = paid_at
+            payment.save(update_fields=['status', 'paid_at', 'updated_at'])
+            assinatura.asaas_payment_id = payment.payment_id
+            assinatura.asaas_invoice_url = payment.invoice_url
+            assinatura.mark_paid(
+                payment_method=self._payment_method_from_asaas(remote),
+                paid_at=paid_at,
+            )
+            FinanceAudit.objects.create(
+                oficina=assinatura.oficina,
+                action='Pagamento Asaas verificado e aplicado',
+                note=(
+                    f'event_id: {event_record.event_id}; payment_id: {payment.payment_id}; '
+                    f'status anterior: {previous_status}; vencimento anterior: {previous_due_date}; '
+                    f'novo vencimento: {assinatura.due_date}.'
+                ),
+            )
+            self._finish_event(event_record, AsaasWebhookEvent.Status.PROCESSED, 'Pagamento aplicado.')
+            logger.info(
+                'Pagamento Asaas aplicado: event_id=%s assinatura_id=%s oficina_id=%s.',
+                event_record.event_id,
+                assinatura.pk,
+                assinatura.oficina_id,
+            )
+            return True
 
 
-class AsaasConnectionTestView(LoginRequiredMixin, View):
+class AsaasConnectionTestView(LoginRequiredMixin, UserPassesTestMixin, View):
     login_url = reverse_lazy('agenda:login')
+
+    def test_func(self):
+        return self.request.user.is_staff
 
     def get(self, request, *args, **kwargs):
         # Endpoint manual para validar Sandbox, chave e conectividade sem expor credenciais.
@@ -363,8 +521,10 @@ class AsaasPixTestChargeView(LoginRequiredMixin, UserPassesTestMixin, View):
     def test_func(self):
         return self.request.user.is_staff
 
-    def get(self, request, *args, **kwargs):
+    def post(self, request, *args, **kwargs):
         # Gera uma cobranca Pix pequena no Sandbox e retorna dados seguros para teste.
+        if not settings.ASAAS_ALLOW_TEST_CHARGES or 'sandbox' not in settings.ASAAS_BASE_URL.lower():
+            return JsonResponse({'detail': 'Cobrancas de teste estao desabilitadas.'}, status=403)
         oficina = getattr(request, 'oficina', None)
         if oficina is None:
             return JsonResponse({'detail': 'Oficina nao encontrada para o usuario logado.'}, status=400)
@@ -403,7 +563,7 @@ class AsaasPixTestChargeView(LoginRequiredMixin, UserPassesTestMixin, View):
         })
 
 
-@require_http_methods(['GET', 'POST'])
+@require_http_methods(['POST'])
 def logout_view(request):
     logout(request)
     return redirect('agenda:login')
@@ -487,7 +647,10 @@ class MinhaOficinaView(StaffRequiredMixin, TemplateView):
         return context
 
 
-class BookingCreateView(FormView):
+class BookingCreateView(PublicPostRateLimitMixin, FormView):
+    rate_limit_scope = 'booking'
+    rate_limit = 30
+    rate_limit_window = 3600
     template_name = 'agenda/booking_form.html'
     form_class = BookingForm
     success_url = reverse_lazy('agenda:booking_success')
@@ -500,17 +663,11 @@ class BookingCreateView(FormView):
     def form_valid(self, form):
         booking = form.save(commit=False)
         booking.oficina = getattr(self.request, 'oficina', None) or form.cleaned_data['oficina']
-        assigned_box = Booking.find_first_available_box(
-            booking.scheduled_date,
-            booking.start_time,
-            booking.duration_minutes,
-            oficina=booking.oficina,
-        )
-        if assigned_box is None:
-            form.add_error('start_time', 'O horario selecionado ja esta ocupado. Escolha outro horario.')
+        try:
+            create_booking(booking)
+        except ValidationError as exc:
+            form.add_error('start_time', exc.message)
             return self.form_invalid(form)
-        booking.assigned_box = assigned_box
-        booking.save()
 
         return super().form_valid(form)
 
@@ -552,17 +709,11 @@ class PublicBookingCreateView(BookingCreateView):
     def form_valid(self, form):
         booking = form.save(commit=False)
         booking.oficina = self.public_oficina
-        assigned_box = Booking.find_first_available_box(
-            booking.scheduled_date,
-            booking.start_time,
-            booking.duration_minutes,
-            oficina=booking.oficina,
-        )
-        if assigned_box is None:
-            form.add_error('start_time', 'O horario selecionado ja esta ocupado. Escolha outro horario.')
+        try:
+            create_booking(booking)
+        except ValidationError as exc:
+            form.add_error('start_time', exc.message)
             return self.form_invalid(form)
-        booking.assigned_box = assigned_box
-        booking.save()
         self.request.session[f'public_booking_success_{self.public_oficina.slug}'] = booking.pk
         return super(BookingCreateView, self).form_valid(form)
 
@@ -750,8 +901,14 @@ class OrdemServicoDetailView(StaffRequiredMixin, TemplateView):
 
 
 class OrdemServicoServiceItemCreateView(StaffRequiredMixin, View):
+    @transaction.atomic
     def post(self, request, pk, *args, **kwargs):
-        ordem = get_object_or_404(OrdemServico, pk=pk, oficina=self.oficina)
+        ordem = get_object_or_404(
+            OrdemServico.objects.select_for_update(), pk=pk, oficina=self.oficina
+        )
+        if not ordem.is_editable:
+            messages.error(request, 'Reabra a OS antes de alterar serviços.')
+            return redirect('agenda:os_detail', pk=pk)
         form = OrdemServicoServiceItemForm(request.POST)
         if form.is_valid():
             item = form.save(commit=False)
@@ -765,8 +922,14 @@ class OrdemServicoServiceItemCreateView(StaffRequiredMixin, View):
 
 
 class OrdemServicoServiceItemDeleteView(StaffRequiredMixin, View):
+    @transaction.atomic
     def post(self, request, pk, item_pk, *args, **kwargs):
-        ordem = get_object_or_404(OrdemServico, pk=pk, oficina=self.oficina)
+        ordem = get_object_or_404(
+            OrdemServico.objects.select_for_update(), pk=pk, oficina=self.oficina
+        )
+        if not ordem.is_editable:
+            messages.error(request, 'Reabra a OS antes de alterar serviços.')
+            return redirect('agenda:os_detail', pk=pk)
         item = get_object_or_404(OrdemServicoServiceItem, pk=item_pk, ordem_servico=ordem, oficina=self.oficina)
         item.delete()
         ordem.service_value = sum(i.total_price for i in ordem.service_items.all())
@@ -775,8 +938,14 @@ class OrdemServicoServiceItemDeleteView(StaffRequiredMixin, View):
 
 
 class OrdemServicoPartItemCreateView(StaffRequiredMixin, View):
+    @transaction.atomic
     def post(self, request, pk, *args, **kwargs):
-        ordem = get_object_or_404(OrdemServico, pk=pk, oficina=self.oficina)
+        ordem = get_object_or_404(
+            OrdemServico.objects.select_for_update(), pk=pk, oficina=self.oficina
+        )
+        if not ordem.is_editable:
+            messages.error(request, 'Reabra a OS antes de alterar peças.')
+            return redirect('agenda:os_detail', pk=pk)
         form = OrdemServicoPartItemForm(request.POST, oficina=self.oficina)
         if form.is_valid():
             item = form.save(commit=False)
@@ -802,8 +971,14 @@ class OrdemServicoPartItemCreateView(StaffRequiredMixin, View):
 
 
 class OrdemServicoPartItemUpdateView(StaffRequiredMixin, View):
+    @transaction.atomic
     def post(self, request, pk, item_pk, *args, **kwargs):
-        ordem = get_object_or_404(OrdemServico, pk=pk, oficina=self.oficina)
+        ordem = get_object_or_404(
+            OrdemServico.objects.select_for_update(), pk=pk, oficina=self.oficina
+        )
+        if not ordem.is_editable:
+            messages.error(request, 'Reabra a OS antes de alterar peças.')
+            return redirect('agenda:os_detail', pk=pk)
         item = get_object_or_404(
             OrdemServicoPartItem, pk=item_pk, ordem_servico=ordem,
             oficina=self.oficina, estoque_item__oficina=self.oficina,
@@ -825,8 +1000,14 @@ class OrdemServicoPartItemUpdateView(StaffRequiredMixin, View):
 
 
 class OrdemServicoPartItemDeleteView(StaffRequiredMixin, View):
+    @transaction.atomic
     def post(self, request, pk, item_pk, *args, **kwargs):
-        ordem = get_object_or_404(OrdemServico, pk=pk, oficina=self.oficina)
+        ordem = get_object_or_404(
+            OrdemServico.objects.select_for_update(), pk=pk, oficina=self.oficina
+        )
+        if not ordem.is_editable:
+            messages.error(request, 'Reabra a OS antes de alterar peças.')
+            return redirect('agenda:os_detail', pk=pk)
         item = get_object_or_404(OrdemServicoPartItem, pk=item_pk, ordem_servico=ordem, oficina=self.oficina)
         with transaction.atomic():
             reverse_order_part(item, user=request.user)
@@ -837,8 +1018,14 @@ class OrdemServicoPartItemDeleteView(StaffRequiredMixin, View):
 
 
 class OrdemServicoFinancialUpdateView(StaffRequiredMixin, View):
+    @transaction.atomic
     def post(self, request, pk, *args, **kwargs):
-        ordem = get_object_or_404(OrdemServico, pk=pk, oficina=self.oficina)
+        ordem = get_object_or_404(
+            OrdemServico.objects.select_for_update(), pk=pk, oficina=self.oficina
+        )
+        if not ordem.is_editable:
+            messages.error(request, 'Reabra a OS antes de alterar dados financeiros.')
+            return redirect('agenda:os_detail', pk=pk)
         form = OrdemServicoFinancialForm(request.POST, instance=ordem)
         if form.is_valid():
             form.save()
@@ -878,15 +1065,29 @@ class OrdemServicoStatusUpdateView(StaffRequiredMixin, View):
             note = form.cleaned_data['note']
             if new_status != ordem.status:
                 try:
-                    with transaction.atomic():
-                        if new_status == OrdemServico.Status.CANCELED:
-                            for part in ordem.part_items.filter(estoque_item__isnull=False):
-                                reverse_order_part(part, user=request.user)
-                        elif ordem.status == OrdemServico.Status.CANCELED:
-                            for part in ordem.part_items.filter(estoque_item__isnull=False):
-                                reconcile_order_part(part, user=request.user)
+                    if new_status == OrdemServico.Status.COMPLETED:
+                        complete_order(
+                            order_id=ordem.pk, oficina=self.oficina,
+                            user=request.user, note=note,
+                        )
+                    elif new_status == OrdemServico.Status.CANCELED:
+                        cancel_order(
+                            order_id=ordem.pk, oficina=self.oficina,
+                            user=request.user, note=note,
+                        )
+                    elif new_status == OrdemServico.Status.IN_PROGRESS and not ordem.is_editable:
+                        reopen_order(
+                            order_id=ordem.pk, oficina=self.oficina,
+                            user=request.user, note=note,
+                        )
+                    elif ordem.is_editable and new_status != OrdemServico.Status.DELIVERED:
                         ordem.status = new_status
                         ordem.save(user=request.user, note=note)
+                    elif ordem.status == OrdemServico.Status.COMPLETED and new_status == OrdemServico.Status.DELIVERED:
+                        ordem.status = new_status
+                        ordem.save(user=request.user, note=note, workflow=True)
+                    else:
+                        raise ValidationError('Transição de status não permitida.')
                 except ValidationError as exc:
                     messages.error(request, '; '.join(exc.messages))
         return redirect('agenda:os_detail', pk=ordem.pk)
@@ -1425,7 +1626,7 @@ class ExportBookingsExcelView(StaffRequiredMixin, View):
             
             for col_num, value in enumerate(data, 1):
                 cell = ws.cell(row=row_num, column=col_num)
-                cell.value = value
+                cell.value = safe_spreadsheet_value(value)
                 cell.border = border
                 cell.alignment = Alignment(horizontal="left", vertical="center", wrap_text=True)
 
@@ -1530,7 +1731,9 @@ class FinanceDashboardView(StaffRequiredMixin, TemplateView):
             transaction_filters = transaction_filters.filter(ordem_servico__status=status)
 
         pending_alerts = transaction_filters.filter(status='pending', due_date__lt=date.today()).count()
-        receivables = transaction_filters.filter(transaction_type='receivable').order_by('-due_date')
+        receivables = transaction_filters.filter(
+            transaction_type='receivable'
+        ).exclude(status='canceled').order_by('-due_date')
         receivables_paginator = Paginator(receivables, 5)
         page = self.request.GET.get('page')
         try:
@@ -1635,7 +1838,7 @@ class FinanceExportExcelView(StaffRequiredMixin, View):
             ]
             for col_num, value in enumerate(row, 1):
                 cell = ws.cell(row=row_num, column=col_num)
-                cell.value = value
+                cell.value = safe_spreadsheet_value(value)
                 cell.border = border
                 cell.alignment = Alignment(horizontal='left', vertical='center', wrap_text=True)
 
@@ -1784,7 +1987,11 @@ class BookingStatusUpdateView(StaffRequiredMixin, View):
         if new_status in Booking.Status.values:
             booking.status = new_status
             booking.save()
-        return redirect(request.META.get('HTTP_REFERER', reverse_lazy('agenda:dashboard')))
+        return redirect(safe_local_redirect(
+            request,
+            request.META.get('HTTP_REFERER'),
+            reverse('agenda:dashboard'),
+        ))
 
 
 class DeleteBookingView(StaffRequiredMixin, View):
@@ -1792,4 +1999,8 @@ class DeleteBookingView(StaffRequiredMixin, View):
         booking_id = request.POST.get('booking_id')
         booking = get_object_or_404(Booking, pk=booking_id, oficina=self.oficina)
         booking.delete()
-        return redirect(request.META.get('HTTP_REFERER', reverse_lazy('agenda:dashboard')))
+        return redirect(safe_local_redirect(
+            request,
+            request.META.get('HTTP_REFERER'),
+            reverse('agenda:dashboard'),
+        ))

@@ -1,5 +1,4 @@
 from django.contrib.auth.views import (
-    LoginView,
     PasswordResetCompleteView,
     PasswordResetConfirmView,
     PasswordResetDoneView,
@@ -54,6 +53,8 @@ from .views import (
     EstoqueMovementCreateView,
     EstoqueMovementsView,
     EstoqueLowView,
+    RateLimitedLoginView,
+    RateLimitedPasswordResetView,
 )
 
 app_name = 'agenda'
@@ -75,10 +76,10 @@ urlpatterns = [
     path('oficina/<slug:slug>/agendar/sucesso/', PublicBookingSuccessView.as_view(), name='public_booking_success'),
     path('agendar/success/', BookingSuccessView.as_view(), name='booking_success'),
     path('agendar/available-slots/', AvailableSlotsView.as_view(), name='available_slots'),
-    path('login/', LoginView.as_view(template_name='registration/login.html', redirect_authenticated_user=True), name='login'),
+    path('login/', RateLimitedLoginView.as_view(), name='login'),
     path(
         'senha/recuperar/',
-        PasswordResetView.as_view(
+        RateLimitedPasswordResetView.as_view(
             template_name='registration/password_reset_form.html',
             email_template_name='agenda/registration/password_reset_email.html',
             html_email_template_name='agenda/registration/password_reset_email.html',

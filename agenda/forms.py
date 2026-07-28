@@ -20,6 +20,7 @@ from .models import (
     EstoqueCategoria,
 )
 from .whatsapp import normalize_phone
+from .security import validate_logo_upload
 
 
 class OficinaSignupForm(UserCreationForm):
@@ -50,6 +51,11 @@ class OficinaSignupForm(UserCreationForm):
     class Meta(UserCreationForm.Meta):
         model = User
         fields = ('username', 'email', 'password1', 'password2')
+
+    def clean_logo(self):
+        logo = self.cleaned_data.get('logo')
+        validate_logo_upload(logo)
+        return logo
 
     def save(self, commit=True):
         user = super().save(commit=False)
@@ -107,6 +113,12 @@ class OficinaProfileForm(forms.ModelForm):
         if telefone and not normalize_phone(telefone):
             raise forms.ValidationError('Informe um telefone valido com DDD.')
         return telefone
+
+    def clean_logo(self):
+        logo = self.cleaned_data.get('logo')
+        if logo and hasattr(logo, 'size'):
+            validate_logo_upload(logo)
+        return logo
 
     def clean_whatsapp(self):
         whatsapp = self.cleaned_data.get('whatsapp', '')
@@ -426,6 +438,18 @@ class OrdemServicoServiceItemForm(forms.ModelForm):
             'unit_price': 'Valor unitário',
         }
 
+    def clean_quantity(self):
+        quantity = self.cleaned_data['quantity']
+        if quantity <= 0:
+            raise forms.ValidationError('A quantidade deve ser maior que zero.')
+        return quantity
+
+    def clean_unit_price(self):
+        unit_price = self.cleaned_data['unit_price']
+        if unit_price < 0:
+            raise forms.ValidationError('O valor unitário não pode ser negativo.')
+        return unit_price
+
 
 class OrdemServicoPartItemForm(forms.ModelForm):
     part_search = forms.CharField(
@@ -492,6 +516,13 @@ class OrdemServicoPartItemForm(forms.ModelForm):
         return quantity
 
 
+    def clean_unit_price(self):
+        unit_price = self.cleaned_data['unit_price']
+        if unit_price < 0:
+            raise forms.ValidationError('O valor unitário não pode ser negativo.')
+        return unit_price
+
+
 class OrdemServicoPartItemUpdateForm(forms.ModelForm):
     class Meta:
         model = OrdemServicoPartItem
@@ -506,6 +537,13 @@ class OrdemServicoPartItemUpdateForm(forms.ModelForm):
         if quantity <= 0:
             raise forms.ValidationError('A quantidade deve ser maior que zero.')
         return quantity
+
+
+    def clean_unit_price(self):
+        unit_price = self.cleaned_data['unit_price']
+        if unit_price < 0:
+            raise forms.ValidationError('O valor unitário não pode ser negativo.')
+        return unit_price
 
 
 class EstoqueItemForm(forms.ModelForm):

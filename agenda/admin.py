@@ -3,6 +3,8 @@ from .models import (
     BoxBlock,
     Booking,
     Assinatura,
+    AsaasPayment,
+    AsaasWebhookEvent,
     Oficina,
     OrdemServico,
     OrdemServicoStatusHistory,
@@ -55,6 +57,34 @@ class AssinaturaAdmin(admin.ModelAdmin):
     def marcar_como_pago(self, request, queryset):
         for assinatura in queryset:
             assinatura.mark_paid(payment_method=assinatura.payment_method or Assinatura.FormaPagamento.PIX)
+
+
+@admin.register(AsaasPayment)
+class AsaasPaymentAdmin(admin.ModelAdmin):
+    list_display = ('payment_id', 'oficina', 'assinatura', 'amount', 'billing_type', 'status', 'paid_at')
+    list_filter = ('status', 'billing_type', 'oficina')
+    search_fields = ('payment_id', 'customer_id', 'external_reference', 'oficina__nome')
+    readonly_fields = [field.name for field in AsaasPayment._meta.fields]
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(AsaasWebhookEvent)
+class AsaasWebhookEventAdmin(admin.ModelAdmin):
+    list_display = ('event_id', 'event_type', 'payment_id', 'status', 'created_at', 'processed_at')
+    list_filter = ('status', 'event_type')
+    search_fields = ('event_id', 'payment_id')
+    readonly_fields = [field.name for field in AsaasWebhookEvent._meta.fields]
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(Booking)

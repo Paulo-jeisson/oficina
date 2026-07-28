@@ -1,12 +1,13 @@
 from datetime import timedelta
+from decimal import Decimal
 import logging
 
 import requests
 from django.conf import settings
-from django.urls import reverse
+from django.db import transaction
 from django.utils import timezone
 
-from .models import Assinatura
+from .models import AsaasPayment, Assinatura
 
 logger = logging.getLogger(__name__)
 
@@ -63,11 +64,10 @@ class AsaasClient:
         if response.status_code >= 400:
             detail = self._extract_error_message(response)
             logger.warning(
-                'Asaas retornou erro %s em %s %s: %s',
+                'Asaas retornou erro %s em %s %s.',
                 response.status_code,
                 method.upper(),
                 path,
-                detail,
             )
             raise AsaasError(detail, status_code=response.status_code)
 
@@ -112,7 +112,7 @@ class AsaasClient:
         payload = {
             'customer': customer_id,
             'billingType': 'PIX',
-            'value': float(value),
+            'value': str(Decimal(value).quantize(Decimal('0.01'))),
             'dueDate': due_date.isoformat(),
             'description': description,
             'externalReference': external_reference,
@@ -127,40 +127,13 @@ class AsaasClient:
         if not payment_id:
             raise AsaasError('ID da cobranca Pix nao informado.')
 
-        # Logs temporarios para depurar a resposta do Asaas no Sandbox.
         path = f'/payments/{payment_id}/pixQrCode'
-        url = f'{self.base_url}{path}'
-        headers = self._headers()
-        headers['accept'] = 'application/json'
-        logger.warning('Asaas Pix QR Code debug - endpoint: GET %s', path)
-        logger.warning('Asaas Pix QR Code debug - url chamada: %s', url)
-        logger.warning('Asaas Pix QR Code debug - payment_id: %s', payment_id)
+        return self._request('get', path)
 
-        try:
-            response = requests.get(
-                url,
-                headers=headers,
-                timeout=20,
-            )
-        except requests.RequestException as exc:
-            logger.exception('Asaas Pix QR Code debug - falha de rede para payment_id %s.', payment_id)
-            raise AsaasError('Nao foi possivel conectar ao Asaas para buscar o QR Code Pix.') from exc
-
-        logger.warning('Asaas Pix QR Code debug - codigo HTTP: %s', response.status_code)
-
-        try:
-            data = response.json()
-        except ValueError as exc:
-            logger.error('Asaas Pix QR Code debug - resposta sem JSON: %s', response.text)
-            raise AsaasError('O Asaas retornou uma resposta sem JSON valido.', status_code=response.status_code) from exc
-
-        logger.warning('Asaas Pix QR Code debug - JSON completo retornado: %s', data)
-
-        if response.status_code >= 400:
-            detail = self._extract_error_message(response)
-            raise AsaasError(detail, status_code=response.status_code)
-
-        return data
+    def get_payment(self, payment_id):
+        if not payment_id or '/' in payment_id:
+            raise AsaasError('ID da cobranca Asaas invalido.')
+        return self._request('get', f'/payments/{payment_id}')
 
     def create_test_pix_charge(self, assinatura, value='5.00'):
         """Cria uma cobranca Pix Sandbox para validar o fluxo de assinaturas SaaS."""
@@ -199,30 +172,66 @@ class AsaasClient:
         return assinatura.asaas_customer_id
 
     def create_payment(self, assinatura, billing_type, request=None):
-        customer_id = self.ensure_customer(assinatura)
-        due_date = timezone.localdate() + timedelta(days=2)
+        if billing_type not in {'PIX', 'CREDIT_CARD'}:
+            raise AsaasError('Forma de pagamento nao permitida.')
 
-        payload = {
-            'customer': customer_id,
-            'billingType': billing_type,
-            'value': float(assinatura.monthly_amount),
-            'dueDate': due_date.isoformat(),
-            'description': f'Assinatura mensal Oficina Online - {assinatura.oficina.nome}',
-            'externalReference': f'assinatura-{assinatura.pk}',
-        }
+        with transaction.atomic():
+            assinatura = (
+                Assinatura.objects.select_for_update()
+                .select_related('oficina', 'oficina__dono')
+                .get(pk=assinatura.pk)
+            )
+            pending = assinatura.asaas_payments.filter(status=AsaasPayment.Status.PENDING).first()
+            if pending:
+                assinatura.asaas_payment_id = pending.payment_id
+                assinatura.asaas_invoice_url = pending.invoice_url
+                assinatura.save(update_fields=['asaas_payment_id', 'asaas_invoice_url', 'updated_at'])
+                return {
+                    'id': pending.payment_id,
+                    'invoiceUrl': pending.invoice_url,
+                    'reused': True,
+                }
 
-        data = self._request('post', '/payments', payload)
-        assinatura.asaas_payment_id = data.get('id', '')
-        assinatura.asaas_invoice_url = data.get('invoiceUrl', '')
-        assinatura.payment_method = (
-            Assinatura.FormaPagamento.PIX
-            if billing_type == 'PIX'
-            else Assinatura.FormaPagamento.CARTAO_CREDITO
-        )
-        assinatura.save(update_fields=[
-            'asaas_payment_id',
-            'asaas_invoice_url',
-            'payment_method',
-            'updated_at',
-        ])
-        return data
+            customer_id = self.ensure_customer(assinatura)
+            due_date = timezone.localdate() + timedelta(days=2)
+            external_reference = f'assinatura-{assinatura.pk}'
+            amount = Decimal(assinatura.monthly_amount).quantize(Decimal('0.01'))
+            payload = {
+                'customer': customer_id,
+                'billingType': billing_type,
+                'value': str(amount),
+                'dueDate': due_date.isoformat(),
+                'description': f'Assinatura mensal Oficina Online - {assinatura.oficina.nome}',
+                'externalReference': external_reference,
+            }
+
+            data = self._request('post', '/payments', payload)
+            payment_id = data.get('id', '')
+            if not payment_id:
+                raise AsaasError('O Asaas nao retornou o ID da cobranca.')
+
+            invoice_url = data.get('invoiceUrl', '')
+            AsaasPayment.objects.create(
+                oficina=assinatura.oficina,
+                assinatura=assinatura,
+                payment_id=payment_id,
+                customer_id=customer_id,
+                external_reference=external_reference,
+                billing_type=billing_type,
+                amount=amount,
+                invoice_url=invoice_url,
+            )
+            assinatura.asaas_payment_id = payment_id
+            assinatura.asaas_invoice_url = invoice_url
+            assinatura.payment_method = (
+                Assinatura.FormaPagamento.PIX
+                if billing_type == 'PIX'
+                else Assinatura.FormaPagamento.CARTAO_CREDITO
+            )
+            assinatura.save(update_fields=[
+                'asaas_payment_id',
+                'asaas_invoice_url',
+                'payment_method',
+                'updated_at',
+            ])
+            return data

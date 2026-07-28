@@ -19,6 +19,7 @@ from django.conf import settings
 from django.conf.urls.static import static
 from django.http import FileResponse
 from django.urls import path, include
+from .health import live, ready
 
 # Ensure Django admin is only accessible to superusers
 admin.site.__class__.has_permission = lambda self, request: request.user.is_active and request.user.is_superuser
@@ -33,6 +34,8 @@ def service_worker(request):
     return response
 
 urlpatterns = [
+    path('health/live/', live, name='health_live'),
+    path('health/ready/', ready, name='health_ready'),
     path('admin/', admin.site.urls),
     path('service-worker.js', service_worker, name='service_worker'),
     path('', include('agenda.urls')),

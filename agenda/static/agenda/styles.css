@@ -3364,6 +3364,34 @@ body.app-body {
   color: #ffb4b4;
 }
 
+.app-sidebar-logout,
+.app-mobile-nav nav form {
+  width: 100%;
+}
+
+.app-sidebar-logout button,
+.app-mobile-nav nav form button {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.app-sidebar-logout button {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0;
+}
+
+.app-mobile-nav nav form button {
+  min-height: 46px;
+  padding: 0.72rem 0.8rem;
+}
+
 .nav-icon,
 .summary-icon {
   display: inline-grid;

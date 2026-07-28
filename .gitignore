@@ -10,7 +10,22 @@ media/
 staticfiles/
 
 .env
+.env.*
+!.env.example
+!deploy/postgres/.env.postgres.example
+
+*.sqlite3
+*.dump
+*.backup
+*.log
+logs/
+*.tmp
+*.bak
+.pytest_cache/
+.coverage
+htmlcov/
 
 .vscode/
 *.code-workspace
 
+deploy/tmp/

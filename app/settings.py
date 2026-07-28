@@ -11,8 +11,10 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 """
 
 from pathlib import Path
+import secrets
 
 from decouple import config
+from django.core.exceptions import ImproperlyConfigured
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -22,26 +24,25 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = config('SECRET_KEY')
+def env_list(name, default=''):
+    return [value.strip() for value in config(name, default=default).split(',') if value.strip()]
+
+
+def required_config(name):
+    value = config(name, default='').strip()
+    if not value:
+        raise ImproperlyConfigured(f'A variável de ambiente {name} é obrigatória.')
+    return value
+
+
+SECRET_KEY = required_config('SECRET_KEY')
 DEBUG = config('DEBUG', default=False, cast=bool)
 
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
-
-ALLOWED_HOSTS = [
-    '127.0.0.1',
-    'localhost',
-    '.ngrok-free.app',
-    '.ngrok-free.dev',
-    '34.224.231.171',
-    'gestaooficinaoficial.com.br',
-    'www.gestaooficinaoficial.com.br',
-]
-
-CSRF_TRUSTED_ORIGINS = [
-    'https://*.ngrok-free.app',
-    'https://*.ngrok-free.dev'
-]
+ALLOWED_HOSTS = env_list(
+    'ALLOWED_HOSTS',
+    default='127.0.0.1,localhost' if DEBUG else '',
+)
+CSRF_TRUSTED_ORIGINS = env_list('CSRF_TRUSTED_ORIGINS')
 
 # Application definition
 
@@ -108,12 +109,40 @@ WSGI_APPLICATION = 'app.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+DB_ENGINE = config('DB_ENGINE', default='sqlite' if DEBUG else 'postgresql').strip().lower()
+
+if DB_ENGINE in {'sqlite', 'sqlite3'}:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': config('DB_NAME', default=str(BASE_DIR / 'db.sqlite3')),
+        }
     }
-}
+elif DB_ENGINE in {'postgresql', 'postgres', 'django.db.backends.postgresql'}:
+    DB_SSLMODE = config('DB_SSLMODE', default='prefer' if DEBUG else 'require')
+    DB_CONNECT_TIMEOUT = config('DB_CONNECT_TIMEOUT', default=10, cast=int)
+    DB_STATEMENT_TIMEOUT_MS = config('DB_STATEMENT_TIMEOUT_MS', default=30000, cast=int)
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': required_config('DB_NAME'),
+            'USER': required_config('DB_USER'),
+            'PASSWORD': required_config('DB_PASSWORD'),
+            'HOST': required_config('DB_HOST'),
+            'PORT': config('DB_PORT', default='5432'),
+            'CONN_MAX_AGE': config('DB_CONN_MAX_AGE', default=60, cast=int),
+            'CONN_HEALTH_CHECKS': True,
+            'OPTIONS': {
+                'sslmode': DB_SSLMODE,
+                'connect_timeout': DB_CONNECT_TIMEOUT,
+                'options': f'-c statement_timeout={DB_STATEMENT_TIMEOUT_MS}',
+            },
+        }
+    }
+else:
+    raise ImproperlyConfigured(
+        'DB_ENGINE inválido. Use "sqlite" para desenvolvimento ou "postgresql" para produção.'
+    )
 
 
 # Password validation
@@ -158,9 +187,83 @@ STATICFILES_DIRS = [
 
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
+MAX_LOGO_UPLOAD_BYTES = config('MAX_LOGO_UPLOAD_BYTES', default=5 * 1024 * 1024, cast=int)
+DATA_UPLOAD_MAX_MEMORY_SIZE = config(
+    'DATA_UPLOAD_MAX_MEMORY_SIZE', default=6 * 1024 * 1024, cast=int
+)
+FILE_UPLOAD_MAX_MEMORY_SIZE = config(
+    'FILE_UPLOAD_MAX_MEMORY_SIZE', default=5 * 1024 * 1024, cast=int
+)
+TRUSTED_PROXY_IPS = tuple(
+    value.strip()
+    for value in config('TRUSTED_PROXY_IPS', default='127.0.0.1,::1').split(',')
+    if value.strip()
+)
+
+# Segurança de produção atrás de Nginx. Os defaults seguros só entram em vigor
+# quando DEBUG=False, preservando o runserver local por HTTP.
+SECURE_SSL_REDIRECT = config('SECURE_SSL_REDIRECT', default=not DEBUG, cast=bool)
+SESSION_COOKIE_SECURE = config('SESSION_COOKIE_SECURE', default=not DEBUG, cast=bool)
+CSRF_COOKIE_SECURE = config('CSRF_COOKIE_SECURE', default=not DEBUG, cast=bool)
+SESSION_COOKIE_HTTPONLY = True
+SECURE_CONTENT_TYPE_NOSNIFF = True
+X_FRAME_OPTIONS = 'DENY'
+SECURE_REFERRER_POLICY = config(
+    'SECURE_REFERRER_POLICY',
+    default='strict-origin-when-cross-origin',
+)
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+
+# Começa desabilitado. Elevar somente depois de validar HTTPS em todos os hosts.
+SECURE_HSTS_SECONDS = config('SECURE_HSTS_SECONDS', default=0, cast=int)
+SECURE_HSTS_INCLUDE_SUBDOMAINS = config(
+    'SECURE_HSTS_INCLUDE_SUBDOMAINS', default=False, cast=bool
+)
+SECURE_HSTS_PRELOAD = config('SECURE_HSTS_PRELOAD', default=False, cast=bool)
+
+LOG_LEVEL = config('LOG_LEVEL', default='INFO').upper()
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'standard': {
+            'format': '{asctime} {levelname} {name}: {message}',
+            'style': '{',
+        },
+    },
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'standard',
+        },
+    },
+    'root': {
+        'handlers': ['console'],
+        'level': LOG_LEVEL,
+    },
+    'loggers': {
+        'django.security': {
+            'handlers': ['console'],
+            'level': 'WARNING',
+            'propagate': False,
+        },
+    },
+}
 
 # Asaas settings.
 # Keep secrets in .env or environment variables; never hard-code API keys here.
 ASAAS_API_KEY = config('ASAAS_API_KEY', default='')
 ASAAS_BASE_URL = config('ASAAS_BASE_URL', default='https://api-sandbox.asaas.com/v3')
 ASAAS_WEBHOOK_TOKEN = config('ASAAS_WEBHOOK_TOKEN', default='')
+ASAAS_WEBHOOK_MAX_BODY_BYTES = config('ASAAS_WEBHOOK_MAX_BODY_BYTES', default=65536, cast=int)
+ASAAS_ALLOW_TEST_CHARGES = config('ASAAS_ALLOW_TEST_CHARGES', default=False, cast=bool)
+
+if not DEBUG:
+    if len(ASAAS_WEBHOOK_TOKEN) < 32:
+        raise ImproperlyConfigured(
+            'ASAAS_WEBHOOK_TOKEN deve ter ao menos 32 caracteres em producao.'
+        )
+    if ASAAS_API_KEY and secrets.compare_digest(ASAAS_API_KEY, ASAAS_WEBHOOK_TOKEN):
+        raise ImproperlyConfigured(
+            'ASAAS_WEBHOOK_TOKEN deve ser diferente de ASAAS_API_KEY.'
+        )

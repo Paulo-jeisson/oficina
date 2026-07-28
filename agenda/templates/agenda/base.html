@@ -39,7 +39,10 @@
                     <a class="{% if 'stock_' in request.resolver_match.url_name %}active{% endif %}" href="{% url 'agenda:stock_overview' %}"><span class="nav-icon">ET</span><span>Estoque</span></a>
                     <a class="{% if request.resolver_match.url_name == 'subscription_detail' %}active{% endif %}" href="{% url 'agenda:subscription_detail' %}"><span class="nav-icon">AS</span><span>Minha assinatura</span></a>
                 </nav>
-                <a class="app-sidebar-logout" href="{% url 'agenda:logout' %}"><span class="nav-icon">SA</span><span>Sair</span></a>
+                <form class="app-sidebar-logout" method="post" action="{% url 'agenda:logout' %}">
+                    {% csrf_token %}
+                    <button type="submit"><span class="nav-icon">SA</span><span>Sair</span></button>
+                </form>
             </aside>
 
             <div class="app-main">
@@ -56,7 +59,10 @@
                             <a href="{% url 'agenda:os_list' %}">Ordens de Servi&ccedil;o</a>
                             <a href="{% url 'agenda:stock_overview' %}">Estoque</a>
                             <a href="{% url 'agenda:subscription_detail' %}">Minha assinatura</a>
-                            <a href="{% url 'agenda:logout' %}">Sair</a>
+                            <form method="post" action="{% url 'agenda:logout' %}">
+                                {% csrf_token %}
+                                <button type="submit">Sair</button>
+                            </form>
                         </nav>
                     </details>
                     <div class="app-topbar-title">
