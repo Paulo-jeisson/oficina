@@ -1,0 +1,42 @@
+{% extends 'agenda/base.html' %}
+{% load agenda_format %}
+{% block content %}
+{% include 'agenda/includes/stock_nav.html' %}
+<div class="dashboard-head">
+  <div><p class="eyebrow">Estoque</p><h1>Visão geral</h1></div>
+  <a class="btn btn-primary" href="{% url 'agenda:stock_create' %}">Nova peça</a>
+</div>
+
+<div class="summary-grid stock-operational-summary">
+  <article class="summary-card"><span>Peças cadastradas</span><strong>{{ totals.parts|default:0 }}</strong></article>
+  <article class="summary-card"><span>Unidades disponíveis</span><strong>{{ totals.units|default:0 }}</strong></article>
+  <article class="summary-card"><span>Estoque baixo</span><strong>{{ low_count }}</strong></article>
+  <article class="summary-card"><span>Sem estoque</span><strong>{{ empty_count }}</strong></article>
+</div>
+
+<div class="summary-grid stock-financial-summary">
+  <article class="summary-card"><span>Valor pelo custo</span><strong>{{ totals.cost_value|brl }}</strong></article>
+  <article class="summary-card"><span>Valor de venda</span><strong>{{ totals.sale_value|brl }}</strong></article>
+  <article class="summary-card {% if totals.potential_profit < 0 %}stock-negative-value{% endif %}">
+    <span>Lucro potencial</span>
+    <strong>{{ totals.potential_profit|brl }}</strong>
+    <small>Estimativa considerando a venda de todo o estoque pelos preços atuais.</small>
+  </article>
+</div>
+
+<section class="table-card">
+  <h2>Movimentações recentes</h2>
+  <div class="overflow-table">
+    <table>
+      <thead><tr><th>Data</th><th>Peça</th><th>Tipo</th><th>Quantidade</th><th>Saldo</th><th>Responsável</th></tr></thead>
+      <tbody>
+        {% for movement in recent_movements %}
+        <tr><td>{{ movement.created_at|date:"d/m/Y H:i" }}</td><td>{{ movement.item.nome }}</td><td>{{ movement.get_tipo_display }}</td><td>{{ movement.quantidade }}</td><td>{{ movement.quantidade_anterior }} → {{ movement.quantidade_posterior }}</td><td>{{ movement.usuario|default:"Sistema" }}</td></tr>
+        {% empty %}
+        <tr><td colspan="6">Nenhuma movimentação registrada.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

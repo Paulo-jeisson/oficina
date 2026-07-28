@@ -12,6 +12,8 @@ from .models import (
     CashFlowRecord,
     FinanceAudit,
     EstoqueItem,
+    EstoqueCategoria,
+    EstoqueMovimentacao,
     WhatsAppMessage,
 )
 
@@ -156,3 +158,22 @@ class EstoqueItemAdmin(admin.ModelAdmin):
     list_display = ('oficina', 'nome', 'codigo', 'quantidade', 'custo_unitario')
     list_filter = ('oficina',)
     search_fields = ('nome', 'codigo')
+
+
+@admin.register(EstoqueCategoria)
+class EstoqueCategoriaAdmin(admin.ModelAdmin):
+    list_display = ('oficina', 'nome')
+    list_filter = ('oficina',)
+
+
+@admin.register(EstoqueMovimentacao)
+class EstoqueMovimentacaoAdmin(admin.ModelAdmin):
+    list_display = ('created_at', 'oficina', 'item', 'tipo', 'quantidade', 'quantidade_anterior', 'quantidade_posterior', 'usuario')
+    list_filter = ('oficina', 'tipo')
+    readonly_fields = [field.name for field in EstoqueMovimentacao._meta.fields]
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False

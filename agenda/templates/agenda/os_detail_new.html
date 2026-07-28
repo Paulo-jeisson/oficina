@@ -97,10 +97,20 @@
 
                 <form id="partForm" method="post" action="{% url 'agenda:os_part_add' ordem.pk %}" style="display:none; margin-bottom: 1rem;">
                     {% csrf_token %}
-                    <div class="form-row">
-                        {{ part_form.description }}
+                    <div class="part-picker">
+                        <div class="part-search-wrap">
+                            <label>Peça</label>
+                            {{ part_form.part_search }}
+                            {{ part_form.estoque_item }}
+                            <div id="partSearchResults" class="part-search-results" hidden></div>
+                            <small id="partAvailability">Pesquise uma peça cadastrada no estoque.</small>
+                        </div>
+                        <div><label>Quantidade</label>
                         {{ part_form.quantity }}
+                        </div>
+                        <div><label>Preço unitário</label>
                         {{ part_form.unit_price }}
+                        </div>
                         <button type="submit" class="btn btn-sm btn-success">Adicionar</button>
                     </div>
                 </form>
@@ -124,10 +134,21 @@
                             <td>R$ {{ item.unit_price|floatformat:2 }}</td>
                             <td>R$ {{ item.total_price|floatformat:2 }}</td>
                             <td>
+                                {% if item.estoque_item %}
+                                <button type="button" class="btn btn-xs btn-secondary" onclick="toggleForm('partEdit{{ item.pk }}')">Editar</button>
+                                {% endif %}
                                 <form method="post" action="{% url 'agenda:os_part_delete' ordem.pk item.pk %}" style="display:inline;">
                                     {% csrf_token %}
                                     <button type="submit" class="btn btn-xs btn-danger" onclick="return confirm('Remover?')">Remover</button>
                                 </form>
+                                {% if item.estoque_item %}
+                                <form id="partEdit{{ item.pk }}" method="post" action="{% url 'agenda:os_part_update' ordem.pk item.pk %}" class="part-inline-edit" style="display:none;">
+                                    {% csrf_token %}
+                                    <input class="form-input" type="number" name="quantity" min="1" value="{{ item.quantity }}" aria-label="Quantidade">
+                                    <input class="form-input" type="number" name="unit_price" min="0" step="0.01" value="{{ item.unit_price|stringformat:'.2f' }}" aria-label="Preço unitário">
+                                    <button class="btn btn-xs btn-success">Salvar</button>
+                                </form>
+                                {% endif %}
                             </td>
                         </tr>
                         {% endfor %}
@@ -221,6 +242,56 @@
 function toggleForm(formId) {
     const form = document.getElementById(formId);
     form.style.display = form.style.display === 'none' ? 'block' : 'none';
+}
+
+const partSearch = document.querySelector('[data-part-search]');
+if (partSearch) {
+    const hiddenPart = document.querySelector('[data-stock-part]');
+    const results = document.getElementById('partSearchResults');
+    const availability = document.getElementById('partAvailability');
+    const price = document.querySelector('#partForm [name="unit_price"]');
+    const quantity = document.querySelector('#partForm [name="quantity"]');
+    let timer;
+
+    function renderParts(parts) {
+        results.innerHTML = '';
+        parts.forEach(part => {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'part-search-option';
+            button.disabled = part.out_of_stock;
+            const title = document.createElement('strong');
+            title.textContent = part.name;
+            const details = document.createElement('span');
+            details.textContent = `SKU: ${part.sku} · Estoque: ${part.available} ${part.unit} · R$ ${Number(part.price).toFixed(2)}`;
+            button.append(title, details);
+            if (part.out_of_stock) {
+                const warning = document.createElement('em');
+                warning.textContent = 'SEM ESTOQUE';
+                button.appendChild(warning);
+            }
+            button.addEventListener('click', () => {
+                hiddenPart.value = part.id;
+                partSearch.value = part.name;
+                price.value = part.price;
+                quantity.max = part.available;
+                availability.textContent = `Disponível: ${part.available} ${part.unit} · Preço cadastrado: R$ ${Number(part.price).toFixed(2)}`;
+                results.hidden = true;
+            });
+            results.appendChild(button);
+        });
+        results.hidden = false;
+    }
+
+    partSearch.addEventListener('input', () => {
+        hiddenPart.value = '';
+        clearTimeout(timer);
+        timer = setTimeout(() => {
+            fetch(`{% url 'agenda:os_part_search' ordem.pk %}?q=${encodeURIComponent(partSearch.value)}`)
+                .then(response => response.json()).then(data => renderParts(data.results));
+        }, 180);
+    });
+    partSearch.addEventListener('focus', () => partSearch.dispatchEvent(new Event('input')));
 }
 </script>
 {% endblock %}

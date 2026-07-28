@@ -6,6 +6,7 @@ from django.db import models
 from django.urls import reverse
 from django.utils.text import slugify
 from django.core.validators import MinValueValidator
+from django.core.exceptions import ValidationError
 
 
 class ServiceType(models.TextChoices):
@@ -927,6 +928,13 @@ class OrdemServicoPartItem(OficinaOwnedModel):
     description = models.CharField('Peça', max_length=180)
     quantity = models.PositiveSmallIntegerField('Quantidade', default=1)
     unit_price = models.DecimalField('Valor unitário', max_digits=10, decimal_places=2, default=0)
+    estoque_item = models.ForeignKey(
+        'agenda.EstoqueItem', related_name='ordem_items', on_delete=models.PROTECT,
+        null=True, blank=True, verbose_name='Peça do estoque',
+    )
+    unit_cost = models.DecimalField('Custo unitário registrado', max_digits=10, decimal_places=2, default=0)
+    stock_quantity_applied = models.PositiveIntegerField('Quantidade já baixada', default=0)
+    created_at = models.DateTimeField('Adicionado em', auto_now_add=True, null=True)
 
     class Meta:
         verbose_name = 'Peça utilizada'
@@ -938,6 +946,8 @@ class OrdemServicoPartItem(OficinaOwnedModel):
     def save(self, *args, **kwargs):
         if not self.oficina_id and self.ordem_servico_id:
             self.oficina = self.ordem_servico.oficina
+        if self.estoque_item_id and self.estoque_item.oficina_id != self.oficina_id:
+            raise ValidationError('A peça e a ordem de serviço devem pertencer à mesma oficina.')
         super().save(*args, **kwargs)
 
     @property
@@ -1076,11 +1086,33 @@ class OrdemServicoStatusHistory(OficinaOwnedModel):
         return self.user.get_full_name() if self.user else 'Sistema'
 
 
+class EstoqueCategoria(OficinaOwnedModel):
+    nome = models.CharField('Nome', max_length=100)
+
+    class Meta:
+        ordering = ['nome']
+        constraints = [
+            models.UniqueConstraint(fields=['oficina', 'nome'], name='unique_categoria_estoque_por_oficina')
+        ]
+
+    def __str__(self):
+        return self.nome
+
+
 class EstoqueItem(OficinaOwnedModel):
     nome = models.CharField('Nome do item', max_length=180)
-    codigo = models.CharField('Codigo', max_length=60, blank=True)
+    codigo = models.CharField('SKU', max_length=60)
+    codigo_barras = models.CharField('Código de barras', max_length=80, blank=True)
+    categoria = models.ForeignKey(EstoqueCategoria, null=True, blank=True, on_delete=models.SET_NULL, related_name='itens')
+    marca = models.CharField('Marca', max_length=100, blank=True)
+    descricao = models.TextField('Descrição', blank=True)
     quantidade = models.PositiveIntegerField('Quantidade', default=0)
+    estoque_minimo = models.PositiveIntegerField('Estoque mínimo', default=0)
+    unidade_medida = models.CharField('Unidade de medida', max_length=20, default='un')
+    localizacao = models.CharField('Localização', max_length=100, blank=True)
     custo_unitario = models.DecimalField('Custo unitario', max_digits=10, decimal_places=2, default=0)
+    preco_venda = models.DecimalField('Preço de venda', max_digits=10, decimal_places=2, default=0)
+    ativo = models.BooleanField('Ativo', default=True)
     created_at = models.DateTimeField('Criado em', auto_now_add=True)
     updated_at = models.DateTimeField('Atualizado em', auto_now=True)
 
@@ -1091,10 +1123,75 @@ class EstoqueItem(OficinaOwnedModel):
         constraints = [
             models.UniqueConstraint(
                 fields=['oficina', 'codigo'],
-                condition=models.Q(codigo__gt=''),
                 name='unique_codigo_estoque_por_oficina',
-            )
+            ),
+            models.CheckConstraint(condition=models.Q(quantidade__gte=0), name='estoque_quantidade_nao_negativa'),
+            models.CheckConstraint(condition=models.Q(estoque_minimo__gte=0), name='estoque_minimo_nao_negativo'),
+            models.CheckConstraint(condition=models.Q(custo_unitario__gte=0), name='estoque_custo_nao_negativo'),
+            models.CheckConstraint(condition=models.Q(preco_venda__gte=0), name='estoque_venda_nao_negativa'),
         ]
+        indexes = [models.Index(fields=['oficina', 'ativo']), models.Index(fields=['oficina', 'nome'])]
 
     def __str__(self):
         return self.nome
+
+    def clean(self):
+        if self.categoria_id and self.categoria.oficina_id != self.oficina_id:
+            raise ValidationError({'categoria': 'A categoria deve pertencer à mesma oficina.'})
+
+    @property
+    def valor_estoque(self):
+        return self.quantidade * self.custo_unitario
+
+    @property
+    def margem_bruta(self):
+        return self.preco_venda - self.custo_unitario
+
+    @property
+    def margem_percentual(self):
+        return (self.margem_bruta / self.preco_venda * 100) if self.preco_venda else Decimal('0')
+
+    @property
+    def status_estoque(self):
+        if self.quantidade == 0:
+            return 'empty'
+        return 'low' if self.quantidade <= self.estoque_minimo else 'normal'
+
+    @property
+    def reposicao_sugerida(self):
+        return max(self.estoque_minimo - self.quantidade, 0)
+
+
+class EstoqueMovimentacao(OficinaOwnedModel):
+    class Tipo(models.TextChoices):
+        ENTRADA = 'entry', 'Entrada'
+        SAIDA = 'exit', 'Saída'
+        AJUSTE = 'adjustment', 'Ajuste'
+        USO_OS = 'os_usage', 'Uso em Ordem de Serviço'
+        ESTORNO = 'reversal', 'Estorno'
+
+    item = models.ForeignKey(EstoqueItem, related_name='movimentacoes', on_delete=models.PROTECT)
+    tipo = models.CharField('Tipo', max_length=20, choices=Tipo.choices)
+    quantidade = models.PositiveIntegerField('Quantidade')
+    quantidade_anterior = models.PositiveIntegerField()
+    quantidade_posterior = models.PositiveIntegerField()
+    custo_unitario = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    usuario = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL)
+    observacao = models.TextField('Observação', blank=True)
+    ordem_servico = models.ForeignKey(OrdemServico, null=True, blank=True, on_delete=models.PROTECT, related_name='stock_movements')
+    ordem_item = models.ForeignKey(OrdemServicoPartItem, null=True, blank=True, on_delete=models.SET_NULL, related_name='stock_movements')
+    created_at = models.DateTimeField('Data/hora', auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at', '-pk']
+        indexes = [
+            models.Index(fields=['oficina', '-created_at']),
+            models.Index(fields=['oficina', 'tipo']),
+            models.Index(fields=['item', '-created_at']),
+        ]
+
+    def clean(self):
+        if self.item_id and self.item.oficina_id != self.oficina_id:
+            raise ValidationError('A movimentação e a peça devem pertencer à mesma oficina.')
+        if self.ordem_servico_id and self.ordem_servico.oficina_id != self.oficina_id:
+            raise ValidationError('A OS deve pertencer à mesma oficina.')

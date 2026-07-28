@@ -18,7 +18,10 @@ from django.utils.decorators import method_decorator
 from django.views.generic import FormView, TemplateView, View
 from django.urls import reverse, reverse_lazy
 from django.utils import timezone
-from django.db.models import Q, Sum, Count, Avg, F, Case, When, Value, DecimalField
+from django.db import transaction
+from django.db.models import Q, Sum, Count, Avg, F, Case, When, Value, DecimalField, ExpressionWrapper
+from django.db.models.functions import Coalesce
+from django.core.exceptions import ValidationError
 from .asaas import AsaasClient, AsaasError
 from .forms import (
     AssinaturaPaymentForm,
@@ -30,7 +33,10 @@ from .forms import (
     OrdemServicoStatusForm,
     OrdemServicoServiceItemForm,
     OrdemServicoPartItemForm,
+    OrdemServicoPartItemUpdateForm,
     OrdemServicoFinancialForm,
+    EstoqueItemForm,
+    EstoqueMovimentoForm,
 )
 from .models import (
     Assinatura,
@@ -47,7 +53,11 @@ from .models import (
     CashFlowRecord,
     FinanceAudit,
     Oficina,
+    EstoqueItem,
+    EstoqueCategoria,
+    EstoqueMovimentacao,
 )
+from .stock import move_stock, reconcile_order_part, reverse_order_part
 from .whatsapp import build_booking_owner_whatsapp_url
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
@@ -727,7 +737,7 @@ class OrdemServicoDetailView(StaffRequiredMixin, TemplateView):
         status_form = OrdemServicoStatusForm(initial={'status': ordem.status})
         financial_form = OrdemServicoFinancialForm(instance=ordem)
         service_form = OrdemServicoServiceItemForm()
-        part_form = OrdemServicoPartItemForm()
+        part_form = OrdemServicoPartItemForm(oficina=self.oficina)
         context.update({
             'ordem': ordem,
             'status_form': status_form,
@@ -767,15 +777,50 @@ class OrdemServicoServiceItemDeleteView(StaffRequiredMixin, View):
 class OrdemServicoPartItemCreateView(StaffRequiredMixin, View):
     def post(self, request, pk, *args, **kwargs):
         ordem = get_object_or_404(OrdemServico, pk=pk, oficina=self.oficina)
-        form = OrdemServicoPartItemForm(request.POST)
+        form = OrdemServicoPartItemForm(request.POST, oficina=self.oficina)
         if form.is_valid():
             item = form.save(commit=False)
             item.oficina = self.oficina
             item.ordem_servico = ordem
-            item.save()
-            ordem.parts_value = sum(i.total_price for i in ordem.part_items.all())
-            ordem.save()
+            if item.estoque_item_id:
+                item.description = item.estoque_item.nome
+                item.unit_cost = item.estoque_item.custo_unitario
+                if not item.unit_price:
+                    item.unit_price = item.estoque_item.preco_venda
+            try:
+                with transaction.atomic():
+                    item.save()
+                    reconcile_order_part(item, user=request.user)
+                    ordem.parts_value = sum(i.total_price for i in ordem.part_items.all())
+                    ordem.save()
+            except ValidationError as exc:
+                messages.error(request, '; '.join(exc.messages))
+                return redirect('agenda:os_detail', pk=pk)
             return redirect('agenda:os_detail', pk=pk)
+        messages.error(request, next(iter(form.errors.values()))[0])
+        return redirect('agenda:os_detail', pk=pk)
+
+
+class OrdemServicoPartItemUpdateView(StaffRequiredMixin, View):
+    def post(self, request, pk, item_pk, *args, **kwargs):
+        ordem = get_object_or_404(OrdemServico, pk=pk, oficina=self.oficina)
+        item = get_object_or_404(
+            OrdemServicoPartItem, pk=item_pk, ordem_servico=ordem,
+            oficina=self.oficina, estoque_item__oficina=self.oficina,
+        )
+        form = OrdemServicoPartItemUpdateForm(request.POST, instance=item)
+        if form.is_valid():
+            try:
+                with transaction.atomic():
+                    form.save()
+                    reconcile_order_part(item, user=request.user)
+                    ordem.parts_value = sum(i.total_price for i in ordem.part_items.all())
+                    ordem.save()
+                messages.success(request, 'Peça atualizada e estoque reconciliado.')
+            except ValidationError as exc:
+                messages.error(request, '; '.join(exc.messages))
+        else:
+            messages.error(request, next(iter(form.errors.values()))[0])
         return redirect('agenda:os_detail', pk=pk)
 
 
@@ -783,9 +828,11 @@ class OrdemServicoPartItemDeleteView(StaffRequiredMixin, View):
     def post(self, request, pk, item_pk, *args, **kwargs):
         ordem = get_object_or_404(OrdemServico, pk=pk, oficina=self.oficina)
         item = get_object_or_404(OrdemServicoPartItem, pk=item_pk, ordem_servico=ordem, oficina=self.oficina)
-        item.delete()
-        ordem.parts_value = sum(i.total_price for i in ordem.part_items.all())
-        ordem.save()
+        with transaction.atomic():
+            reverse_order_part(item, user=request.user)
+            item.delete()
+            ordem.parts_value = sum(i.total_price for i in ordem.part_items.all())
+            ordem.save()
         return redirect('agenda:os_detail', pk=pk)
 
 
@@ -830,9 +877,38 @@ class OrdemServicoStatusUpdateView(StaffRequiredMixin, View):
             new_status = form.cleaned_data['status']
             note = form.cleaned_data['note']
             if new_status != ordem.status:
-                ordem.status = new_status
-                ordem.save(user=request.user, note=note)
+                try:
+                    with transaction.atomic():
+                        if new_status == OrdemServico.Status.CANCELED:
+                            for part in ordem.part_items.filter(estoque_item__isnull=False):
+                                reverse_order_part(part, user=request.user)
+                        elif ordem.status == OrdemServico.Status.CANCELED:
+                            for part in ordem.part_items.filter(estoque_item__isnull=False):
+                                reconcile_order_part(part, user=request.user)
+                        ordem.status = new_status
+                        ordem.save(user=request.user, note=note)
+                except ValidationError as exc:
+                    messages.error(request, '; '.join(exc.messages))
         return redirect('agenda:os_detail', pk=ordem.pk)
+
+
+class OrdemServicoPartSearchView(StaffRequiredMixin, View):
+    def get(self, request, pk, *args, **kwargs):
+        get_object_or_404(OrdemServico, pk=pk, oficina=self.oficina)
+        query = request.GET.get('q', '').strip()
+        parts = EstoqueItem.objects.filter(oficina=self.oficina, ativo=True)
+        if query:
+            parts = parts.filter(
+                Q(nome__icontains=query) | Q(codigo__icontains=query) |
+                Q(codigo_barras__icontains=query)
+            )
+        parts = parts.order_by('nome')[:15]
+        return JsonResponse({'results': [{
+            'id': part.pk, 'name': part.nome, 'sku': part.codigo,
+            'barcode': part.codigo_barras, 'available': part.quantidade,
+            'unit': part.unidade_medida, 'price': str(part.preco_venda),
+            'out_of_stock': part.quantidade == 0,
+        } for part in parts]})
 
 
 class OrdemServicoPrintView(StaffRequiredMixin, TemplateView):
@@ -843,6 +919,156 @@ class OrdemServicoPrintView(StaffRequiredMixin, TemplateView):
         os_pk = self.kwargs.get('pk')
         ordem = get_object_or_404(OrdemServico, pk=os_pk, oficina=self.oficina)
         context['ordem'] = ordem
+        return context
+
+
+class EstoqueBaseMixin(StaffRequiredMixin):
+    def stock_queryset(self):
+        return EstoqueItem.objects.filter(oficina=self.oficina)
+
+
+class EstoqueOverviewView(EstoqueBaseMixin, TemplateView):
+    template_name = 'agenda/stock_overview.html'
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        items = self.stock_queryset()
+        money_field = DecimalField(max_digits=20, decimal_places=2)
+        totals = items.aggregate(
+            parts=Count('id'), units=Sum('quantidade'),
+            cost_value=Coalesce(
+                Sum(ExpressionWrapper(
+                    F('quantidade') * F('custo_unitario'), output_field=money_field
+                )), Decimal('0'), output_field=money_field,
+            ),
+            sale_value=Coalesce(
+                Sum(ExpressionWrapper(
+                    F('quantidade') * F('preco_venda'), output_field=money_field
+                )), Decimal('0'), output_field=money_field,
+            ),
+        )
+        totals['units'] = totals['units'] or 0
+        totals['potential_profit'] = totals['sale_value'] - totals['cost_value']
+        context.update({
+            'totals': totals,
+            'low_count': items.filter(quantidade__lte=F('estoque_minimo')).count(),
+            'empty_count': items.filter(quantidade=0).count(),
+            'recent_movements': EstoqueMovimentacao.objects.filter(oficina=self.oficina).select_related(
+                'item', 'usuario', 'ordem_servico'
+            )[:10],
+        })
+        return context
+
+
+class EstoqueListView(EstoqueBaseMixin, TemplateView):
+    template_name = 'agenda/stock_list.html'
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        items = self.stock_queryset().select_related('categoria')
+        query = self.request.GET.get('q', '').strip()
+        category = self.request.GET.get('category', '')
+        status = self.request.GET.get('status', '')
+        active = self.request.GET.get('active', '')
+        if query:
+            items = items.filter(Q(nome__icontains=query) | Q(codigo__icontains=query) | Q(codigo_barras__icontains=query))
+        if category:
+            items = items.filter(categoria_id=category)
+        if status == 'low':
+            items = items.filter(quantidade__lte=F('estoque_minimo'), quantidade__gt=0)
+        elif status == 'empty':
+            items = items.filter(quantidade=0)
+        if active in ('0', '1'):
+            items = items.filter(ativo=active == '1')
+        paginator = Paginator(items, 15)
+        page = paginator.get_page(self.request.GET.get('page'))
+        total = self.stock_queryset()
+        context.update({
+            'items': page, 'categories': EstoqueCategoria.objects.filter(oficina=self.oficina),
+            'query': query, 'category_filter': category, 'status_filter': status, 'active_filter': active,
+            'total_parts': total.count(), 'total_units': total.aggregate(v=Sum('quantidade'))['v'] or 0,
+            'low_count': total.filter(quantidade__lte=F('estoque_minimo')).count(),
+            'stock_value': total.aggregate(v=Sum(ExpressionWrapper(F('quantidade') * F('custo_unitario'), output_field=DecimalField())))['v'] or 0,
+        })
+        return context
+
+
+class EstoqueItemCreateView(EstoqueBaseMixin, FormView):
+    template_name = 'agenda/stock_form.html'
+    form_class = EstoqueItemForm
+
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        kwargs['oficina'] = self.oficina
+        return kwargs
+
+    def form_valid(self, form):
+        item = form.save(commit=False)
+        item.oficina = self.oficina
+        item.full_clean()
+        item.save()
+        messages.success(self.request, 'Peça cadastrada com sucesso.')
+        return redirect('agenda:stock_list')
+
+
+class EstoqueItemUpdateView(EstoqueItemCreateView):
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        kwargs['instance'] = get_object_or_404(self.stock_queryset(), pk=self.kwargs['pk'])
+        return kwargs
+
+    def form_valid(self, form):
+        form.save()
+        messages.success(self.request, 'Peça atualizada com sucesso.')
+        return redirect('agenda:stock_list')
+
+
+class EstoqueMovementCreateView(EstoqueBaseMixin, FormView):
+    template_name = 'agenda/stock_movement_form.html'
+    form_class = EstoqueMovimentoForm
+
+    def dispatch(self, request, *args, **kwargs):
+        self.item = get_object_or_404(self.stock_queryset(), pk=kwargs['pk'])
+        return super().dispatch(request, *args, **kwargs)
+
+    def form_valid(self, form):
+        data = form.cleaned_data
+        try:
+            move_stock(
+                item=self.item, movement_type=data['tipo'],
+                quantity=data['quantidade'], target_quantity=data['quantidade'],
+                user=self.request.user, note=data['observacao'], unit_cost=data.get('custo_unitario'),
+            )
+        except ValidationError as exc:
+            form.add_error(None, exc)
+            return self.form_invalid(form)
+        messages.success(self.request, 'Movimentação registrada com sucesso.')
+        return redirect('agenda:stock_movements')
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['item'] = self.item
+        return context
+
+
+class EstoqueMovementsView(EstoqueBaseMixin, TemplateView):
+    template_name = 'agenda/stock_movements.html'
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        movements = EstoqueMovimentacao.objects.filter(oficina=self.oficina).select_related('item', 'usuario', 'ordem_servico')
+        context['movements'] = Paginator(movements, 20).get_page(self.request.GET.get('page'))
+        return context
+
+
+class EstoqueLowView(EstoqueBaseMixin, TemplateView):
+    template_name = 'agenda/stock_low.html'
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['items'] = self.stock_queryset().filter(
+            ativo=True, quantidade__lte=F('estoque_minimo')
+        ).select_related('categoria')
         return context
 
 
@@ -974,6 +1200,9 @@ class DashboardView(StaffRequiredMixin, TemplateView):
             'pending_bookings_page': pending_bookings_page,
             'total_pending_whatsapp_bookings': pending_bookings_page.paginator.count,
             'pending_filter_querystring': pending_filter_params.urlencode(),
+            'stock_low_count': EstoqueItem.objects.filter(
+                oficina=self.oficina, ativo=True, quantidade__lte=F('estoque_minimo')
+            ).count(),
         })
         return context
 

@@ -16,6 +16,8 @@ from .models import (
     OrdemServicoServiceItem,
     OrdemServicoPartItem,
     OrdemServico,
+    EstoqueItem,
+    EstoqueCategoria,
 )
 from .whatsapp import normalize_phone
 
@@ -227,7 +229,6 @@ class BoxBlockForm(forms.ModelForm):
                 self.add_error(None, exc)
         return cleaned
 
-
 class BookingForm(forms.ModelForm):
     oficina = forms.ModelChoiceField(
         label='Oficina',
@@ -427,9 +428,29 @@ class OrdemServicoServiceItemForm(forms.ModelForm):
 
 
 class OrdemServicoPartItemForm(forms.ModelForm):
+    part_search = forms.CharField(
+        required=False, label='Peça',
+        widget=forms.TextInput(attrs={
+            'class': 'form-input', 'placeholder': 'Pesquisar por nome, SKU ou código de barras',
+            'autocomplete': 'off', 'data-part-search': '1',
+        }),
+    )
+    estoque_item = forms.ModelChoiceField(
+        queryset=EstoqueItem.objects.none(), required=True, label='Peça cadastrada',
+        widget=forms.HiddenInput(attrs={'data-stock-part': '1'}),
+    )
+
+    def __init__(self, *args, oficina=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['description'].required = False
+        if oficina:
+            self.fields['estoque_item'].queryset = EstoqueItem.objects.filter(
+                oficina=oficina, ativo=True
+            ).order_by('nome')
+
     class Meta:
         model = OrdemServicoPartItem
-        fields = ['description', 'quantity', 'unit_price']
+        fields = ['estoque_item', 'description', 'quantity', 'unit_price']
         widgets = {
             'description': forms.TextInput(attrs={
                 'placeholder': 'Ex: Filtro de óleo',
@@ -452,6 +473,83 @@ class OrdemServicoPartItemForm(forms.ModelForm):
             'quantity': 'Qtd',
             'unit_price': 'Valor unitário',
         }
+
+    def clean(self):
+        cleaned = super().clean()
+        stock_item = cleaned.get('estoque_item')
+        if stock_item:
+            cleaned['description'] = stock_item.nome
+            if not cleaned.get('unit_price'):
+                cleaned['unit_price'] = stock_item.preco_venda
+        elif not cleaned.get('description'):
+            self.add_error('description', 'Informe ou selecione uma peça.')
+        return cleaned
+
+    def clean_quantity(self):
+        quantity = self.cleaned_data['quantity']
+        if quantity <= 0:
+            raise forms.ValidationError('A quantidade deve ser maior que zero.')
+        return quantity
+
+
+class OrdemServicoPartItemUpdateForm(forms.ModelForm):
+    class Meta:
+        model = OrdemServicoPartItem
+        fields = ['quantity', 'unit_price']
+        widgets = {
+            'quantity': forms.NumberInput(attrs={'class': 'form-input', 'min': 1}),
+            'unit_price': forms.NumberInput(attrs={'class': 'form-input', 'min': 0, 'step': '0.01'}),
+        }
+
+    def clean_quantity(self):
+        quantity = self.cleaned_data['quantity']
+        if quantity <= 0:
+            raise forms.ValidationError('A quantidade deve ser maior que zero.')
+        return quantity
+
+
+class EstoqueItemForm(forms.ModelForm):
+    class Meta:
+        model = EstoqueItem
+        fields = [
+            'nome', 'codigo', 'codigo_barras', 'categoria', 'marca', 'descricao',
+            'estoque_minimo', 'unidade_medida', 'localizacao', 'custo_unitario',
+            'preco_venda', 'ativo',
+        ]
+        widgets = {'descricao': forms.Textarea(attrs={'rows': 3})}
+
+    def __init__(self, *args, oficina=None, **kwargs):
+        self.oficina = oficina
+        super().__init__(*args, **kwargs)
+        self.fields['categoria'].queryset = EstoqueCategoria.objects.filter(oficina=oficina)
+        for field in self.fields.values():
+            field.widget.attrs.setdefault('class', 'form-input')
+
+    def clean_codigo(self):
+        codigo = self.cleaned_data['codigo'].strip()
+        query = EstoqueItem.objects.filter(oficina=self.oficina, codigo__iexact=codigo)
+        if self.instance.pk:
+            query = query.exclude(pk=self.instance.pk)
+        if query.exists():
+            raise forms.ValidationError('Já existe uma peça com este SKU nesta oficina.')
+        return codigo
+
+
+class EstoqueMovimentoForm(forms.Form):
+    tipo = forms.ChoiceField(choices=[
+        ('entry', 'Entrada'), ('exit', 'Saída'), ('adjustment', 'Ajuste'),
+    ])
+    quantidade = forms.IntegerField(min_value=0, label='Quantidade / saldo final')
+    custo_unitario = forms.DecimalField(min_value=0, decimal_places=2, required=False)
+    observacao = forms.CharField(required=False, widget=forms.Textarea(attrs={'rows': 3}))
+
+    def clean(self):
+        cleaned = super().clean()
+        if cleaned.get('tipo') != 'adjustment' and not cleaned.get('quantidade'):
+            self.add_error('quantidade', 'A quantidade deve ser maior que zero.')
+        if cleaned.get('tipo') == 'exit' and not cleaned.get('observacao', '').strip():
+            self.add_error('observacao', 'Informe o motivo da saída.')
+        return cleaned
 
 
 class OrdemServicoFinancialForm(forms.ModelForm):

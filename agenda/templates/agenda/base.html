@@ -36,6 +36,7 @@
                     <a class="{% if request.resolver_match.url_name == 'minha_oficina' %}active{% endif %}" href="{% url 'agenda:minha_oficina' %}"><span class="nav-icon">OF</span><span>Minha Oficina</span></a>
                     <a class="{% if request.resolver_match.url_name == 'finance_dashboard' %}active{% endif %}" href="{% url 'agenda:finance_dashboard' %}"><span class="nav-icon">FN</span><span>Financeiro</span></a>
                     <a class="{% if request.resolver_match.url_name == 'os_list' or request.resolver_match.url_name == 'os_detail' %}active{% endif %}" href="{% url 'agenda:os_list' %}"><span class="nav-icon">OS</span><span>Ordens de Servi&ccedil;o</span></a>
+                    <a class="{% if 'stock_' in request.resolver_match.url_name %}active{% endif %}" href="{% url 'agenda:stock_overview' %}"><span class="nav-icon">ET</span><span>Estoque</span></a>
                     <a class="{% if request.resolver_match.url_name == 'subscription_detail' %}active{% endif %}" href="{% url 'agenda:subscription_detail' %}"><span class="nav-icon">AS</span><span>Minha assinatura</span></a>
                 </nav>
                 <a class="app-sidebar-logout" href="{% url 'agenda:logout' %}"><span class="nav-icon">SA</span><span>Sair</span></a>
@@ -53,6 +54,7 @@
                             <a href="{% url 'agenda:minha_oficina' %}">Minha Oficina</a>
                             <a href="{% url 'agenda:finance_dashboard' %}">Financeiro</a>
                             <a href="{% url 'agenda:os_list' %}">Ordens de Servi&ccedil;o</a>
+                            <a href="{% url 'agenda:stock_overview' %}">Estoque</a>
                             <a href="{% url 'agenda:subscription_detail' %}">Minha assinatura</a>
                             <a href="{% url 'agenda:logout' %}">Sair</a>
                         </nav>

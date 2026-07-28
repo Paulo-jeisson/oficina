@@ -78,6 +78,7 @@
     {% endif %}
 
     <div class="summary-grid dashboard-summary-grid">
+        <a class="summary-card" href="{% url 'agenda:stock_low' %}"><span>Estoque baixo</span><strong>{{ stock_low_count }} peça{{ stock_low_count|pluralize }}</strong></a>
         <article class="summary-card">
             <span class="summary-icon">AG</span>
             <h3>Total de agendamentos</h3>
